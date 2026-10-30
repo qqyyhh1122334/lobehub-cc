@@ -383,6 +383,8 @@ $ bun run dev:spa       # 仅 SPA 前端（端口 9876）
 > `https://app.lobehub.com/_dangerous_local_dev_proxy?debug-host=http%3A%2F%2Flocalhost%3A9876`。
 > 打开此链接可在线上环境中加载本地开发服务器，支持 HMR 热更新。
 
+使用内网 Docker 基础服务时，将 `.env.example.development.intranet` 复制为 `.env.development.local`，填写服务器地址和凭据，再执行 `bun run db:migrate`、`bun run dev`。本地同时运行 Next.js 和 Vite，访问 `http://localhost:3010`，无需本地 Docker。详见 [本地前后端连接内网基础服务](docker-compose/dev/README.md)。仅本地前端连接远程 Next.js 的 `DEV_BACKEND_URL` 和 Node 22 `server` profile 方案仍作为可选方式保留。
+
 如果你希望了解更多详情，欢迎可以查阅我们的 [📘 开发指南][docs-dev-guide]
 
 <div align="right">

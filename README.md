@@ -344,6 +344,8 @@ $ bun run dev:spa   # SPA frontend only (port 9876)
 > `https://app.lobehub.com/_dangerous_local_dev_proxy?debug-host=http%3A%2F%2Flocalhost%3A9876`.
 > Open it to develop locally against the production backend with HMR.
 
+To use Docker infrastructure on an intranet server, copy `.env.example.development.intranet` to `.env.development.local`, configure the server address and credentials, then run `bun run db:migrate` and `bun run dev`. Next.js and Vite run locally at `http://localhost:3010`; a local Docker daemon is unnecessary. See [local full-stack development with intranet infrastructure](docker-compose/dev/README.md). The frontend-only `DEV_BACKEND_URL` workflow and optional Node 22 `server` profile remain available.
+
 If you would like to learn more details, please feel free to look at our [📘 Development Guide][docs-dev-guide].
 
 <div align="right">

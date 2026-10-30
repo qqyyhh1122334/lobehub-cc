@@ -7,142 +7,156 @@
     <script type="module">
       globalThis['__DEBUG_PROXY__'] = true;
 
-      // --- 1. 解析 debug host ---
-      function isValidDevHost(urlStr) {
+      function isValidDevHost(value) {
         try {
-          var u = new URL(urlStr);
-          if (['http:', 'https:'].indexOf(u.protocol) === -1) return false;
-          var h = u.hostname.toLowerCase();
-          return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
-        } catch (e) {
+          var url = new URL(value);
+          if (!['http:', 'https:'].includes(url.protocol)) return false;
+          if (url.username || url.password) return false;
+          return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname.toLowerCase());
+        } catch {
           return false;
         }
       }
 
-      var searchParams = new URLSearchParams(window.location.search);
-      var debugHost = searchParams.get('debug-host');
-
-      if (searchParams.get('reset')) {
-        sessionStorage.removeItem('debug-host');
+      async function fetchHtml(url, label) {
+        var response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) throw new Error(label + ' returned HTTP ' + response.status);
+        return await response.text();
       }
 
-      var storedHost = sessionStorage.getItem('debug-host');
-      var host = 'http://localhost:9876';
-      if (debugHost && isValidDevHost(debugHost)) {
-        host = debugHost;
-        sessionStorage.setItem('debug-host', debugHost);
-      } else if (storedHost && isValidDevHost(storedHost)) {
-        host = storedHost;
+      async function fetchServerConfig(url) {
+        var response = await fetch(url, {
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error('Backend configuration returned HTTP ' + response.status);
+        if ((response.headers.get('content-type') || '').includes('application/json')) {
+          return await response.json();
+        }
+
+        // Older backends only expose configuration inside their SPA HTML.
+        var html = await response.text();
+        var match = html.match(/window\.__SERVER_CONFIG__\s*=\s*(\{[\s\S]*?\});/);
+        if (!match) throw new Error('The backend did not return SPA server configuration.');
+        return JSON.parse(match[1]);
       }
 
-      // --- 2. Worker 跨域补丁（必须在任何模块加载前注入）---
-      var workerPatch = document.createElement('script');
-      workerPatch.textContent = `(function () {
-  var O = globalThis.Worker;
-  globalThis.Worker = function (u, o) {
-    var h = typeof u === "string" ? u : u instanceof URL ? u.href : "";
-    if (h.startsWith(${JSON.stringify(host)})) {
-      var code = 'import "' + h + '";';
-      var b = new Blob([code], { type: "application/javascript" });
-      return new O(URL.createObjectURL(b), Object.assign({}, o, { type: "module" }));
+      function rewriteModuleImports(source, host) {
+        return source.replace(
+          /(\bfrom\s+|\bimport\s*(?:\(\s*)?)(["'])(\/(?!\/)[^"']*)\2/g,
+          function (_, prefix, quote, path) {
+            return prefix + quote + new URL(path, host).toString() + quote;
+          },
+        );
+      }
+
+      async function loadScript(source, host) {
+        // This placeholder belongs to the local HTML, not the remote backend config.
+        var content = source.textContent.replace(
+          /window\.__SERVER_CONFIG__\s*=\s*undefined;\s*\/\*\s*SERVER_CONFIG\s*\*\//g,
+          '',
+        );
+        var src = source.getAttribute('src');
+        if ((!src && !content.trim()) || source.noModule) return;
+
+        var script = document.createElement('script');
+        for (var attribute of source.attributes) {
+          if (attribute.name !== 'src') script.setAttribute(attribute.name, attribute.value);
+        }
+        // Dynamically inserted scripts otherwise default to async execution.
+        script.async = false;
+        if (src) script.src = new URL(src, host + '/').toString();
+        else {
+          script.textContent =
+            source.type === 'module' ? rewriteModuleImports(content, host) : content;
+        }
+
+        var executable = !script.type || /^(module|(?:text|application)\/(?:java|ecma)script)$/.test(script.type);
+        if (!executable || (!src && script.type !== 'module')) {
+          document.body.append(script);
+          return;
+        }
+
+        // Await each module, including Vite's React Refresh preamble, before its dependents.
+        await new Promise(function (resolve, reject) {
+          script.addEventListener('load', resolve, { once: true });
+          script.addEventListener('error', function () {
+            reject(new Error('Unable to load a development script' + (src ? ': ' + script.src : '.')));
+          }, { once: true });
+          document.body.append(script);
+        });
+      }
+
+      try {
+        var searchParams = new URLSearchParams(window.location.search);
+        var debugHost = searchParams.get('debug-host');
+        if (searchParams.get('reset')) sessionStorage.removeItem('debug-host');
+
+        var storedHost = sessionStorage.getItem('debug-host');
+        var host = 'http://localhost:9876';
+        if (debugHost && isValidDevHost(debugHost)) {
+          host = new URL(debugHost).origin;
+          sessionStorage.setItem('debug-host', host);
+        } else if (storedHost && isValidDevHost(storedHost)) {
+          host = new URL(storedHost).origin;
+        }
+
+        var locale =
+          decodeURIComponent(
+            (document.cookie.match(/(?:^|;\s*)LOBE_LOCALE=([^;]*)/) || [])[1] || '',
+          ) || 'en-US';
+
+        // Fetch concurrently, but do not start any local modules until both are ready.
+        var [serverConfig, devHtml] = await Promise.all([
+          fetchServerConfig('/spa/' + encodeURIComponent(locale) + '/chat'),
+          fetchHtml(host, 'Local Vite server'),
+        ]);
+        window.__SERVER_CONFIG__ = serverConfig;
+
+        // Worker URLs originate from Vite while the page keeps the backend origin.
+        var workerPatch = document.createElement('script');
+        workerPatch.textContent = `(function () {
+  var OriginalWorker = globalThis.Worker;
+  if (!OriginalWorker) return;
+  globalThis.Worker = function (url, options) {
+    var href = typeof url === 'string' ? url : url instanceof URL ? url.href : '';
+    if (href && new URL(href, location.href).origin === ${JSON.stringify(host)}) {
+      var code = 'import ' + JSON.stringify(new URL(href, location.href).href) + ';';
+      var blob = new Blob([code], { type: 'application/javascript' });
+      return new OriginalWorker(URL.createObjectURL(blob), Object.assign({}, options, { type: 'module' }));
     }
-    return new O(u, o);
+    return new OriginalWorker(url, options);
   };
-  globalThis.Worker.prototype = O.prototype;
+  globalThis.Worker.prototype = OriginalWorker.prototype;
 })();`;
-      document.head.insertBefore(workerPatch, document.head.firstChild);
+        document.head.append(workerPatch);
 
-      // --- 3. 注入 React Refresh runtime（HMR 前置条件）---
-      var refreshScript = document.createElement('script');
-      refreshScript.type = 'module';
-      refreshScript.textContent =
-        'import RefreshRuntime from "' +
-        host +
-        '/@react-refresh";' +
-        'RefreshRuntime.injectIntoGlobalHook(window);' +
-        'window.$RefreshReg$ = () => {};' +
-        'window.$RefreshSig$ = () => (type) => type;' +
-        'window.__vite_plugin_react_preamble_installed__ = true;';
-      document.head.append(refreshScript);
+        var doc = new DOMParser().parseFromString(devHtml, 'text/html');
+        var scripts = Array.from(doc.querySelectorAll('script'));
+        for (var script of scripts) script.remove();
 
-      // --- 4. 注入 __SERVER_CONFIG__（从线上 SPA route 获取）---
-      var locale =
-        decodeURIComponent(
-          (document.cookie.match(/(?:^|;\s*)LOBE_LOCALE=([^;]*)/) || [])[1] || '',
-        ) || 'en-US';
-
-      var configReady = fetch('/spa/' + locale + '/chat')
-        .then(function (res) {
-          return res.text();
-        })
-        .then(function (html) {
-          var match = html.match(/window\.__SERVER_CONFIG__\s*=\s*(\{[\s\S]*?\});/);
-          if (match) {
-            var configScript = document.createElement('script');
-            configScript.textContent = 'window.__SERVER_CONFIG__ = ' + match[1] + ';';
-            document.head.insertBefore(configScript, document.head.firstChild);
+        for (var meta of doc.head.querySelectorAll('meta')) document.head.append(meta);
+        for (var element of doc.head.querySelectorAll('style, link[rel="stylesheet"]')) {
+          if (element.tagName === 'LINK') {
+            element.setAttribute('href', new URL(element.getAttribute('href'), host + '/').toString());
           }
-        });
+          document.head.append(element);
+        }
+        document.body.innerHTML = doc.body.innerHTML;
 
-      // --- 5. Fetch dev server HTML 并注入 ---
-      var devHtmlReady = fetch(host)
-        .then(function (res) {
-          return res.text();
-        })
-        .then(function (html) {
-          var parser = new DOMParser();
-          var doc = parser.parseFromString(html, 'text/html');
-
-          var scripts = doc.querySelectorAll('script');
-          scripts.forEach(function (s) {
-            s.remove();
-          });
-
-          doc.head.querySelectorAll('meta').forEach(function (meta) {
-            document.head.append(meta);
-          });
-
-          doc.head.querySelectorAll('style, link[rel="stylesheet"]').forEach(function (el) {
-            if (el.tagName === 'LINK') {
-              var href = el.getAttribute('href');
-              if (href && href.startsWith('/')) {
-                el.setAttribute('href', new URL(href, host).toString());
-              }
-            }
-            document.head.append(el);
-          });
-
-          document.body.innerHTML = doc.body.innerHTML;
-
-          scripts.forEach(function (script) {
-            var s = document.createElement('script');
-            s.type = 'module';
-            if (script.crossOrigin) s.crossOrigin = script.crossOrigin;
-
-            if (script.src) {
-              var srcPath = script.src.startsWith('http')
-                ? new URL(script.src).pathname
-                : script.src;
-              s.src = new URL(srcPath, host).toString();
-            } else if (script.textContent) {
-              s.textContent = script.textContent.replace(
-                /from\s+["'](\/[@\w].*?)["']/g,
-                function (_, p) {
-                  return 'from "' + new URL(p, host).toString() + '"';
-                },
-              );
-            } else {
-              return;
-            }
-
-            document.body.append(s);
-          });
-        });
-
-      Promise.all([configReady, devHtmlReady]).then(function () {
-        console.log('%c[Debug Proxy] Loaded from ' + host, 'color: #52c41a; font-weight: bold;');
-      });
+        // Replay the transformed Vite HTML in document order: Refresh, client, then entry.
+        for (var script of scripts) await loadScript(script, host);
+      } catch (error) {
+        console.error('[Debug Proxy] Failed to initialize:', error);
+        var title = document.createElement('h1');
+        title.textContent = 'Unable to start the local frontend';
+        var detail = document.createElement('p');
+        detail.textContent = error instanceof Error ? error.message : String(error);
+        var help = document.createElement('p');
+        help.textContent = 'Check the backend URL, start the local Vite server, and reload this page.';
+        document.body.replaceChildren(title, detail, help);
+      }
     </script>
   </head>
-  <body></body>
+  <body><p>Loading the local frontend…</p></body>
 </html>

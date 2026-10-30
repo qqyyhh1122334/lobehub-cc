@@ -1,6 +1,8 @@
 import { codeInspectorPlugin } from 'code-inspector-plugin';
-import { type NextConfig } from 'next';
-import { type Header, type Redirect } from 'next/dist/lib/load-custom-routes';
+import type { NextConfig } from 'next';
+import type { Header, Redirect } from 'next/dist/lib/load-custom-routes';
+
+const debugProxyRoutes = ['/_dangerous_local_dev_proxy', '/_dangerous_local_dev_proxy/:path*'];
 
 interface CustomNextConfig {
   experimental?: NextConfig['experimental'];
@@ -109,6 +111,17 @@ export function defineConfig(config: CustomNextConfig) {
           headers: securityHeaders,
           source: '/:path*',
         },
+        ...debugProxyRoutes.map((source) => ({
+          headers: [
+            {
+              key: 'Cache-Control',
+              value: 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+            },
+            { key: 'Pragma', value: 'no-cache' },
+            { key: 'Expires', value: '0' },
+          ],
+          source,
+        })),
         {
           headers: [
             {
@@ -349,6 +362,11 @@ export function defineConfig(config: CustomNextConfig) {
       },
       ...(config.redirects ?? []),
     ],
+    rewrites: async () =>
+      debugProxyRoutes.map((source) => ({
+        destination: '/_dangerous_local_dev_proxy.html',
+        source,
+      })),
     // when external packages in dev mode with turbopack, this config will lead to bundle error
     // @napi-rs/canvas is a native module that can't be bundled by Turbopack
     // pdfjs-dist uses @napi-rs/canvas for DOMMatrix polyfill in Node.js environment

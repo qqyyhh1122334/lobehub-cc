@@ -199,7 +199,7 @@ async function buildSeoMeta(locale: string): Promise<string> {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ path?: string[]; variants: string }> },
 ) {
   const { variants } = await params;
@@ -218,6 +218,13 @@ export async function GET(
     isMobile,
   };
 
+  // Remote SPA development needs backend configuration without a Vite server in this container.
+  if (request.headers.get('accept')?.split(',').some((type) => type.trim() === 'application/json')) {
+    return Response.json(spaConfig, {
+      headers: { 'Cache-Control': 'no-store', Vary: 'Accept' },
+    });
+  }
+
   let html = await getTemplate(isMobile);
 
   html = html.replace(
@@ -233,6 +240,7 @@ export async function GET(
     headers: {
       'Cache-Control': 'no-cache',
       'content-type': 'text/html; charset=utf-8',
+      Vary: 'Accept',
     },
   });
 }

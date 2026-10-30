@@ -7,6 +7,7 @@ import type { PluginOption, ViteDevServer } from 'vite';
 import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+import { createDebugProxyUrl, resolveDevBackendUrl } from './plugins/vite/devBackend';
 import { viteEnvRestartKeys } from './plugins/vite/envRestartKeys';
 import {
   createSharedRolldownOutput,
@@ -20,7 +21,9 @@ import { vercelSkewProtection } from './plugins/vite/vercelSkewProtection';
 const isMobile = process.env.MOBILE === 'true';
 const mode = process.env.NODE_ENV === 'production' ? 'production' : 'development';
 
-Object.assign(process.env, loadEnv(mode, process.cwd(), ''));
+// Keep this Vite-only setting out of process.env so an env-file restart can pick up edits.
+const { DEV_BACKEND_URL: configuredDevBackendUrl, ...loadedEnv } = loadEnv(mode, process.cwd(), '');
+Object.assign(process.env, loadedEnv);
 
 const isDev = process.env.NODE_ENV !== 'production';
 const platform = isMobile ? 'mobile' : 'web';
@@ -122,7 +125,7 @@ export default defineConfig({
   optimizeDeps: sharedOptimizeDeps,
   plugins: [
     vercelSkewProtection(),
-    viteEnvRestartKeys(['APP_URL']),
+    viteEnvRestartKeys(['APP_URL', 'DEV_BACKEND_URL']),
     enableViteDevTools && DevTools({
       build: {
         withApp: true,
@@ -133,7 +136,7 @@ export default defineConfig({
     isDev && {
       name: 'lobe-dev-proxy-print',
       configureServer(server: ViteDevServer) {
-        const ONLINE_HOST = 'https://app.lobehub.com';
+        const devBackendUrl = resolveDevBackendUrl(configuredDevBackendUrl || undefined);
         const c = {
           green: (s: string) => `\x1B[32m${s}\x1B[0m`,
           bold: (s: string) => `\x1B[1m${s}\x1B[0m`,
@@ -145,8 +148,7 @@ export default defineConfig({
         const getProxyUrl = () => {
           const urls = server.resolvedUrls;
           if (!urls?.local?.[0]) return;
-          const localHost = urls.local[0].replace(/\/$/, '');
-          return `${ONLINE_HOST}/_dangerous_local_dev_proxy?debug-host=${encodeURIComponent(localHost)}`;
+          return createDebugProxyUrl(devBackendUrl, urls.local[0]);
         };
         const printProxyUrl = () => {
           const proxyUrl = getProxyUrl();
