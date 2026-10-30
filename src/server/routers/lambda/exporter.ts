@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { marked } from 'marked';
 import PDFDocument from 'pdfkit';
 import { z } from 'zod';
@@ -22,23 +24,20 @@ const exportProcedure = authedProcedure.use(serverDatabase).use(async (opts) => 
   });
 });
 
-const REGULAR_FONT_URL =
-  'https://cdn.jsdelivr.net/gh/adobe-fonts/source-han-sans@2.004R/OTF/SimplifiedChinese/SourceHanSansSC-Regular.otf';
-
 let regularFontCache: Buffer | null = null;
-
 const loadRegularFont = async (): Promise<Buffer> => {
   if (regularFontCache) return regularFontCache;
-
-  const response = await fetch(REGULAR_FONT_URL);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch font from CDN: ${response.status} ${response.statusText}`);
+  const fontPath =
+    process.env.INTRANET_PDF_FONT_PATH ||
+    resolve(process.cwd(), 'public/fonts/SourceHanSansSC-Regular.otf');
+  try {
+    regularFontCache = await readFile(fontPath);
+  } catch {
+    throw new Error(
+      'Offline PDF font is missing. Install a licensed CJK font at public/fonts/SourceHanSansSC-Regular.otf or set INTRANET_PDF_FONT_PATH. Markdown and JSON export remain available.',
+    );
   }
-
-  const fontBuffer = Buffer.from(await response.arrayBuffer());
-  regularFontCache = fontBuffer;
-
-  return fontBuffer;
+  return regularFontCache;
 };
 
 const generatePdfFromMarkdown = async (

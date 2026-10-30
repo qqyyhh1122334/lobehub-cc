@@ -11,6 +11,7 @@ import { BriefModel } from '@/database/models/brief';
 import { TaskModel } from '@/database/models/task';
 import { TaskTopicModel } from '@/database/models/taskTopic';
 import type { LobeChatDatabase } from '@/database/type';
+import { assertTaskAutomationAvailable } from '@/libs/intranet/taskPolicy';
 import { AiAgentService } from '@/server/services/aiAgent';
 import { TaskLifecycleService } from '@/server/services/taskLifecycle';
 
@@ -62,6 +63,7 @@ export class TaskRunnerService {
     if (!task) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
     }
+    assertTaskAutomationAvailable(task);
 
     // Track whether *this* invocation transitioned the task to 'running'. The
     // catch-block rollback must only fire when we own the running state —

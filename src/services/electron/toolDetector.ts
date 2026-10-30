@@ -49,42 +49,42 @@ class ToolDetectorService {
   /**
    * Get cached status for a tool (no detection)
    */
-  getToolStatus = (name: string): ToolStatus | null => {
+  getToolStatus = async (name: string): Promise<ToolStatus | null> => {
     return ensureElectronIpc().toolDetector.getToolStatus(name);
   };
 
   /**
    * Get all cached statuses (no detection)
    */
-  getAllToolStatus = (): Record<string, ToolStatus> => {
+  getAllToolStatus = async (): Promise<Record<string, ToolStatus>> => {
     return ensureElectronIpc().toolDetector.getAllToolStatus();
   };
 
   /**
    * Clear tool status cache
    */
-  clearToolCache = (name?: string): void => {
-    ensureElectronIpc().toolDetector.clearToolCache(name);
+  clearToolCache = async (name?: string): Promise<void> => {
+    return ensureElectronIpc().toolDetector.clearToolCache(name);
   };
 
   /**
    * Get list of registered tools
    */
-  getRegisteredTools = (): string[] => {
+  getRegisteredTools = async (): Promise<string[]> => {
     return ensureElectronIpc().toolDetector.getRegisteredTools();
   };
 
   /**
    * Get all categories
    */
-  getCategories = (): ToolCategory[] => {
+  getCategories = async (): Promise<ToolCategory[]> => {
     return ensureElectronIpc().toolDetector.getCategories();
   };
 
   /**
    * Get tools in a category with their info
    */
-  getToolsInCategory = (category: ToolCategory): ToolInfo[] => {
+  getToolsInCategory = async (category: ToolCategory): Promise<ToolInfo[]> => {
     return ensureElectronIpc().toolDetector.getToolsInCategory(category);
   };
 

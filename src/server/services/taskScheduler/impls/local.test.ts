@@ -22,7 +22,7 @@ describe('LocalTaskScheduler', () => {
         userId: 'user-1',
       });
 
-      expect(scheduleId).toMatch(/^local-task-task-1-\d+$/);
+      expect(scheduleId).toMatch(/^local-task-task-1-\d+-\d+$/);
     });
 
     it('should execute callback after delay', async () => {
@@ -117,6 +117,26 @@ describe('LocalTaskScheduler', () => {
       expect(callback).toHaveBeenCalledWith('task-c', 'user-1');
     });
   });
+
+  it('uses distinct IDs for repeated schedules in the same millisecond', async () => {
+    const callback = vi.fn().mockResolvedValue(undefined);
+    scheduler.setExecutionCallback(callback);
+    const first = await scheduler.scheduleNextTopic({ delay: 1, taskId: 'same', userId: 'u' });
+    const second = await scheduler.scheduleNextTopic({ delay: 1, taskId: 'same', userId: 'u' });
+    expect(first).not.toBe(second);
+    await scheduler.cancelScheduled(first);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY, 2_147_484])(
+    'rejects unsafe delay %s',
+    async (delay) => {
+      await expect(
+        scheduler.scheduleNextTopic({ delay, taskId: 't', userId: 'u' }),
+      ).rejects.toThrow(RangeError);
+    },
+  );
 
   describe('cancelScheduled', () => {
     it('should cancel a pending schedule before it fires', async () => {

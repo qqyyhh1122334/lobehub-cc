@@ -1,7 +1,5 @@
 import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 
-import { klavisEnv } from '@/config/klavis';
-import { isDesktop } from '@/const/version';
 import { appEnv, getAppConfig } from '@/envs/app';
 import { authEnv } from '@/envs/auth';
 import { fileEnv } from '@/envs/file';
@@ -51,7 +49,7 @@ export const getServerGlobalConfig = async () => {
         modelListKey: 'AWS_BEDROCK_MODEL_LIST',
       },
       deepseek: {
-        enabled: true,
+        enabled: false,
       },
       giteeai: {
         enabledKey: 'ENABLED_GITEE_AI',
@@ -61,11 +59,11 @@ export const getServerGlobalConfig = async () => {
         withDeploymentName: true,
       },
       lmstudio: {
-        fetchOnClient: isDesktop ? false : undefined,
+        fetchOnClient: false,
       },
       ollama: {
-        enabled: isDesktop ? true : undefined,
-        fetchOnClient: isDesktop ? false : !process.env.OLLAMA_PROXY_URL,
+        enabled: !!process.env.OLLAMA_PROXY_URL,
+        fetchOnClient: false,
       },
       ollamacloud: {
         enabledKey: 'ENABLED_OLLAMA_CLOUD',
@@ -93,12 +91,10 @@ export const getServerGlobalConfig = async () => {
     disableEmailPassword: authEnv.AUTH_DISABLE_EMAIL_PASSWORD,
     enableBusinessFeatures: ENABLE_BUSINESS_FEATURES,
     enableEmailVerification: authEnv.AUTH_EMAIL_VERIFICATION,
-    enableKlavis: !!klavisEnv.KLAVIS_API_KEY,
-    enableLobehubSkill: !!(appEnv.MARKET_TRUSTED_CLIENT_SECRET && appEnv.MARKET_TRUSTED_CLIENT_ID),
+    enableKlavis: false,
+    enableLobehubSkill: false,
     enableMagicLink: authEnv.AUTH_ENABLE_MAGIC_LINK,
-    enableMarketTrustedClient: !!(
-      appEnv.MARKET_TRUSTED_CLIENT_SECRET && appEnv.MARKET_TRUSTED_CLIENT_ID
-    ),
+    enableMarketTrustedClient: false,
     enableUploadFileToServer: !!fileEnv.S3_SECRET_ACCESS_KEY,
     enableVisualUnderstanding: !!(
       toolsEnv.VISUAL_UNDERSTANDING_PROVIDER && toolsEnv.VISUAL_UNDERSTANDING_MODEL

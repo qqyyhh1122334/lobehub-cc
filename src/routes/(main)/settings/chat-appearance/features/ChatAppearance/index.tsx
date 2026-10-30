@@ -17,7 +17,7 @@ import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useUserStore } from '@/store/user';
-import { settingsSelectors } from '@/store/user/selectors';
+import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 
 import ChatPreview from './ChatPreview';
 import ChatTransitionPreview from './ChatTransitionPreview';
@@ -26,7 +26,7 @@ import MermaidPreview from './MermaidPreview';
 
 const ChatAppearance = memo(() => {
   const { t } = useTranslation('setting');
-  const { general } = useUserStore(settingsSelectors.currentSettings, isEqual);
+  const general = useUserStore(userGeneralSettingsSelectors.config, isEqual);
   const [setSettings, isUserStateInit] = useUserStore((s) => [s.setSettings, s.isUserStateInit]);
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
 

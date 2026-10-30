@@ -217,6 +217,12 @@ export const userMemoryRouter = router({
   }),
 
   requestMemoryFromChatTopic: userMemoryProcedure
+    .use(async () => {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'INTRANET_FEATURE_DISABLED: cloud memory extraction',
+      });
+    })
     .input(userMemoryExtractionInputSchema)
     .mutation(async ({ ctx, input }) => {
       if (input.fromDate && input.toDate && input.fromDate > input.toDate) {

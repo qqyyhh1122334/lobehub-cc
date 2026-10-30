@@ -1,10 +1,11 @@
 'use client';
 
 import 'antd/dist/reset.css';
+import 'katex/dist/katex.min.css';
 
 import { TITLE_BAR_HEIGHT } from '@lobechat/desktop-bridge';
 import { type NeutralColors, type PrimaryColors } from '@lobehub/ui';
-import { ConfigProvider, FontLoader, ThemeProvider } from '@lobehub/ui';
+import { ConfigProvider, ThemeProvider } from '@lobehub/ui';
 import { message as antdMessage } from 'antd';
 import { AppConfigContext } from 'antd/es/app/context';
 import { createStaticStyles, cx, useTheme } from 'antd-style';
@@ -94,14 +95,7 @@ export interface AppThemeProps {
 }
 
 const AppTheme = memo<AppThemeProps>(
-  ({
-    children,
-    defaultPrimaryColor,
-    defaultNeutralColor,
-    globalCDN,
-    customFontURL,
-    customFontFamily,
-  }) => {
+  ({ children, defaultPrimaryColor, defaultNeutralColor, customFontFamily }) => {
     const language = useGlobalStore(systemStatusSelectors.language);
     const antdTheme = useTheme();
     const isDark = useIsDark();
@@ -160,6 +154,7 @@ const AppTheme = memo<AppThemeProps>(
           className={cx(styles.app, styles.scrollbar, styles.scrollbarPolyfill)}
           defaultAppearance={currentAppearence}
           defaultThemeMode={currentAppearence}
+          enableCustomFonts={false}
           customTheme={{
             neutralColor: neutralColor ?? defaultNeutralColor,
             primaryColor: primaryColor ?? defaultPrimaryColor,
@@ -175,7 +170,6 @@ const AppTheme = memo<AppThemeProps>(
             },
           }}
         >
-          {!!customFontURL && <FontLoader url={customFontURL} />}
           <GlobalStyle />
           <AntdStaticMethods />
           <ConfigProvider
@@ -186,7 +180,7 @@ const AppTheme = memo<AppThemeProps>(
               aAs: Link,
               imgAs: Image,
               imgUnoptimized: true,
-              proxy: globalCDN ? 'unpkg' : undefined,
+              proxy: undefined,
             }}
           >
             {children}

@@ -1,5 +1,5 @@
 import { Button, Flexbox, Icon, Input, Text } from '@lobehub/ui';
-import { App,Form as AForm } from 'antd';
+import { App, Form as AForm } from 'antd';
 import { createStaticStyles } from 'antd-style';
 import { EditIcon, LinkIcon, Settings2Icon, TerminalIcon } from 'lucide-react';
 import { useImperativeHandle, useState } from 'react';
@@ -158,7 +158,11 @@ interface SettingsProps {
   identifier: string;
 }
 
-const Settings = ({ ref, identifier, hideFooter }: SettingsProps & { ref?: React.RefObject<SettingsRef | null> }) => {
+const Settings = ({
+  ref,
+  identifier,
+  hideFooter,
+}: SettingsProps & { ref?: React.RefObject<SettingsRef | null> }) => {
   const { t } = useTranslation(['plugin', 'common']);
   const [connectionForm] = AForm.useForm();
   const [envForm] = AForm.useForm();
@@ -230,7 +234,7 @@ const Settings = ({ ref, identifier, hideFooter }: SettingsProps & { ref?: React
     }
   };
 
-  return (
+  const content = (
     <Flexbox paddingBlock={8} paddingInline={12}>
       <Flexbox gap={24}>
         <Flexbox gap={24}>
@@ -388,6 +392,12 @@ const Settings = ({ ref, identifier, hideFooter }: SettingsProps & { ref?: React
         )}
       </Flexbox>
     </Flexbox>
+  );
+
+  return isStdioType ? (
+    <Text type="secondary">{t('common:intranet.stdioUnavailable')}</Text>
+  ) : (
+    content
   );
 };
 

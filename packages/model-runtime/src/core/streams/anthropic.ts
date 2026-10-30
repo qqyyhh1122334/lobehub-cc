@@ -3,7 +3,7 @@ import type { Stream } from '@anthropic-ai/sdk/streaming';
 import type { ChatCitationItem } from '@lobechat/types';
 
 import type { ChatStreamCallbacks } from '../../types';
-import { convertAnthropicUsage } from '../usageConverters';
+import { convertAnthropicUsage } from '../usageConverters/anthropic';
 import type {
   ChatPayloadForTransformStream,
   StreamContext,

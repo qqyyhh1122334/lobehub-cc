@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import { isIntranetNavigation } from '@/security/intranet/url';
 import { type AnchorHTMLAttributes } from 'react';
 import React, { memo } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
@@ -9,11 +11,20 @@ interface LinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
 
 /**
  * Smart Link component for global use.
- * - External links (http://, https://) → native <a> tag
+ * - External destinations → disabled anchors without href
  * - Internal routes → React Router Link
  */
 const Link = memo<LinkProps>(({ href, children, ...props }) => {
-  // External links use native <a> tag
+  const { t } = useTranslation('common');
+  if (href && !isIntranetNavigation(href)) {
+    return (
+      <a {...props} aria-disabled="true" title={t('intranet.externalNavigation')}>
+        {children}
+      </a>
+    );
+  }
+
+  // Same-origin absolute URLs use a native anchor.
   if (href?.startsWith('http://') || href?.startsWith('https://')) {
     return (
       <a href={href} rel="noreferrer" {...props}>

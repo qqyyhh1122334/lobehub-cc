@@ -30,32 +30,9 @@ export async function deliverWebhook(
     : urlJoin(process.env.INTERNAL_APP_URL || process.env.APP_URL || '', url);
 
   if (delivery === 'qstash') {
-    try {
-      const { Client } = await import('@upstash/qstash');
-      const qstashToken = process.env.QSTASH_TOKEN;
-      if (!qstashToken) {
-        log('QStash token not available, falling back to fetch delivery');
-        await fetchDeliver(resolvedUrl, payload);
-        return;
-      }
-      const client = new Client({ token: qstashToken });
-      await client.publishJSON({
-        body: payload,
-        headers: {
-          ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET && {
-            'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
-          }),
-        },
-        url: resolvedUrl,
-      });
-      log('Webhook delivered via QStash: %s', url);
-    } catch (error) {
-      log('QStash delivery failed, falling back to fetch: %O', error);
-      await fetchDeliver(resolvedUrl, payload);
-    }
-  } else {
-    await fetchDeliver(resolvedUrl, payload);
+    throw new Error('INTRANET_FEATURE_DISABLED: QStash webhook delivery');
   }
+  await fetchDeliver(resolvedUrl, payload);
 }
 
 async function fetchDeliver(url: string, payload: Record<string, unknown>): Promise<void> {

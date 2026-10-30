@@ -1,9 +1,7 @@
-import { TRPCError } from '@trpc/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { userMemoryRouter } from '@/server/routers/lambda/userMemory';
-import { AsyncTaskErrorType, AsyncTaskStatus, AsyncTaskType } from '@/types/asyncTask';
-import { MemorySourceType } from '@/types/userMemory';
+import { AsyncTaskErrorType, AsyncTaskStatus } from '@/types/asyncTask';
 
 const mockFindActiveByType = vi.fn();
 const mockCreate = vi.fn();
@@ -76,111 +74,19 @@ const createCaller = (ctxOverrides: Partial<any> = {}) => {
 };
 
 describe('userMemoryRouter.requestMemoryFromChatTopic', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockTriggerProcessUsers.mockResolvedValue({ workflowRunId: 'workflow-run-1' });
-  });
+  beforeEach(() => vi.clearAllMocks());
 
-  it('dedupes when an active task exists', async () => {
-    mockFindActiveByType.mockResolvedValue({
-      id: 'existing-task',
-      metadata: { progress: { completedTopics: 0, totalTopics: 1 } },
-      status: AsyncTaskStatus.Pending,
-    });
-
+  it('rejects removed cloud extraction before creating or scheduling a job', async () => {
     const caller = createCaller();
-    const result = await caller.requestMemoryFromChatTopic({});
-
-    expect(result).toEqual({
-      deduped: true,
-      id: 'existing-task',
-      metadata: { progress: { completedTopics: 0, totalTopics: 1 } },
-      status: AsyncTaskStatus.Pending,
+    await expect(caller.requestMemoryFromChatTopic({})).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      message: 'INTRANET_FEATURE_DISABLED: cloud memory extraction',
     });
+    expect(mockFindActiveByType).not.toHaveBeenCalled();
+    expect(mockCountTopicsForMemoryExtractor).not.toHaveBeenCalled();
     expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockTriggerProcessUsers).not.toHaveBeenCalled();
-  });
-
-  it('creates task and triggers workflow with user context and dates', async () => {
-    mockFindActiveByType.mockResolvedValue(undefined);
-    mockCreate.mockResolvedValue('new-task');
-    mockCountTopicsForMemoryExtractor.mockResolvedValue(2);
-
-    const caller = createCaller();
-    const result = await caller.requestMemoryFromChatTopic({
-      fromDate: new Date('2024-01-01'),
-      toDate: new Date('2024-02-01'),
-    });
-
-    expect(mockCreate).toHaveBeenCalledWith({
-      metadata: {
-        progress: { completedTopics: 0, totalTopics: 2 },
-        range: {
-          from: new Date('2024-01-01').toISOString(),
-          to: new Date('2024-02-01').toISOString(),
-        },
-        source: 'chat_topic',
-      },
-      status: AsyncTaskStatus.Pending,
-      type: AsyncTaskType.UserMemoryExtractionWithChatTopic,
-    });
-    expect(mockTriggerProcessUsers).toHaveBeenCalledWith(
-      expect.objectContaining({
-        asyncTaskId: 'new-task',
-        baseUrl: 'https://internal.example.com',
-        fromDate: new Date('2024-01-01'),
-        sources: [MemorySourceType.ChatTopic],
-        toDate: new Date('2024-02-01'),
-        userIds: ['user-1'],
-        userInitiated: true,
-      }),
-      { extraHeaders: { 'x-test': 'ok' } },
-    );
-    expect(mockUpdate).toHaveBeenCalledWith('new-task', {
-      metadata: expect.objectContaining({
-        control: {
-          upstash: {
-            workflowRunIds: ['workflow-run-1'],
-          },
-        },
-      }),
-    });
-    expect(result).toMatchObject({
-      deduped: false,
-      id: 'new-task',
-      status: AsyncTaskStatus.Pending,
-    });
-  });
-
-  it('returns success immediately when no topics', async () => {
-    mockFindActiveByType.mockResolvedValue(undefined);
-    mockCountTopicsForMemoryExtractor.mockResolvedValue(0);
-    mockCreate.mockResolvedValue('empty-task');
-
-    const caller = createCaller();
-    const result = await caller.requestMemoryFromChatTopic({});
-
-    expect(result).toEqual({
-      deduped: false,
-      id: 'empty-task',
-      metadata: {
-        progress: { completedTopics: 0, totalTopics: 0 },
-        range: { from: undefined, to: undefined },
-        source: 'chat_topic',
-      },
-      status: AsyncTaskStatus.Success,
-    });
-    expect(mockTriggerProcessUsers).not.toHaveBeenCalled();
-  });
-
-  it('throws on invalid date range', async () => {
-    const caller = createCaller();
-    await expect(
-      caller.requestMemoryFromChatTopic({
-        fromDate: new Date('2024-02-02'),
-        toDate: new Date('2024-01-01'),
-      }),
-    ).rejects.toBeInstanceOf(TRPCError);
   });
 });
 

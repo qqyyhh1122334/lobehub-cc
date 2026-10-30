@@ -1,6 +1,6 @@
 'use client';
 
-import { useAnalytics } from '@lobehub/analytics/react';
+import { useAnalytics } from '@/libs/analytics/intranet';
 import { ActionIcon, Button, Flexbox, Tooltip } from '@lobehub/ui';
 import { Carousel as AntCarousel } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';

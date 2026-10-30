@@ -1,3 +1,4 @@
+import { assertTaskAutomationAvailable } from '@/libs/intranet/taskPolicy';
 import { normalizeListTasksParams, TaskIdentifier } from '@lobechat/builtin-tool-task';
 import {
   formatDependencyAdded,
@@ -340,6 +341,7 @@ export const createTaskRuntime = ({
       schedulePattern?: string | null;
       scheduleTimezone?: string | null;
     }) => {
+      assertTaskAutomationAvailable(args);
       const task = await taskModel.resolve(args.identifier);
       if (!task) return { content: `Task not found: ${args.identifier}`, success: false };
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { getLobehubSkillProviderById } from '@lobechat/const';
-import { type Klavis } from 'klavis';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useToolStore } from '@/store/tool';
@@ -16,7 +15,7 @@ const POLL_TIMEOUT_MS = 15_000;
 
 interface UseSkillConnectOptions {
   identifier: string;
-  serverName?: Klavis.McpServerName;
+  serverName?: string;
   type: 'klavis' | 'lobehub';
 }
 

@@ -1,12 +1,6 @@
-import { getElectronIpc } from '@lobechat/electron-client-ipc';
-import { type DesktopIpcServices } from '@lobehub/desktop-ipc-typings';
+import type { DesktopIpcServices } from './contract';
 
+/** Electron and its subprocess/network capabilities are absent from this web distribution. */
 export const ensureElectronIpc = (): DesktopIpcServices => {
-  const ipc = getElectronIpc();
-  if (!ipc) {
-    throw new Error(
-      'electronAPI.invoke not found. Ensure the preload exposes invoke via window.electronAPI.invoke',
-    );
-  }
-  return ipc;
+  throw new Error('Desktop IPC is disabled in the intranet web build.');
 };

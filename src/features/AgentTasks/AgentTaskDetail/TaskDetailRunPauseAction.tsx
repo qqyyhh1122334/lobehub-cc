@@ -25,6 +25,7 @@ const formatCountdown = (msRemaining: number): string => {
 
 const TaskDetailRunPauseAction = memo(() => {
   const { t } = useTranslation('chat');
+  const { t: commonT } = useTranslation('common');
   const taskId = useTaskStore(taskDetailSelectors.activeTaskId);
   const canRun = useTaskStore(taskDetailSelectors.canRunActiveTask);
   const canPause = useTaskStore(taskDetailSelectors.canPauseActiveTask);
@@ -127,6 +128,17 @@ const TaskDetailRunPauseAction = memo(() => {
     scheduleTimezone,
     nowMs,
   ]);
+
+  if (automationMode === 'schedule') {
+    return (
+      <Flexbox horizontal align="center" gap={12}>
+        <Text type="secondary">{commonT('intranetUnavailable')}</Text>
+        <Button loading={isCancellingSchedule} onClick={handleCancelSchedule}>
+          {t('taskDetail.cancelSchedule')}
+        </Button>
+      </Flexbox>
+    );
+  }
 
   if (isScheduled) {
     return (

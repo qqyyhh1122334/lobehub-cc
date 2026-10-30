@@ -1,92 +1,13 @@
 name: lobehub
 services:
-  # Default infrastructure workflow (Vite and Next.js run on the development machine):
-  # docker compose up -d --wait postgresql redis rustfs searxng
-  # docker compose run --rm --no-deps rustfs-init
-  # Run bucket initialization separately so --wait does not wait on an exited one-shot service.
-  # The server profile is an optional alternative for running Next.js in Docker.
-  # Enable with: docker compose --profile server up -d --wait
-  lobe:
-    image: '${NODE_IMAGE:-node:22-bookworm-slim}'
-    container_name: lobehub
-    profiles:
-      - server
-    network_mode: 'service:network-service'
-    working_dir: /app
-    volumes:
-      - ../..:/app
-      - type: volume
-        source: server_node_modules
-        target: /app/node_modules
-        volume:
-          nocopy: true
-      - server_next_cache:/app/.next
-      - server_pnpm_store:/pnpm/store
-    depends_on:
-      postgresql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rustfs:
-        condition: service_healthy
-      rustfs-init:
-        condition: service_completed_successfully
-      searxng:
-        condition: service_started
-    environment:
-      - 'NODE_ENV=development'
-      - 'CI=true'
-      - 'HOSTNAME=0.0.0.0'
-      - 'PORT=3210'
-      - 'APP_URL=${APP_URL:-}'
-      - 'AUTH_SECRET=${AUTH_SECRET:-}'
-      - 'KEY_VAULTS_SECRET=${KEY_VAULTS_SECRET:-}'
-      - 'DATABASE_DRIVER=node'
-      - 'DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgresql:5432/${LOBE_DB_NAME}'
-      - 'INTERNAL_APP_URL=http://localhost:3210'
-      - 'REDIS_URL=redis://redis:6379'
-      - 'REDIS_PREFIX=lobechat'
-      - 'REDIS_TLS=0'
-      - 'SEARXNG_URL=http://searxng:8080'
-      - 'S3_ENDPOINT=${S3_ENDPOINT}'
-      - 'S3_BUCKET=${RUSTFS_LOBE_BUCKET}'
-      - 'S3_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY}'
-      - 'S3_SECRET_ACCESS_KEY=${RUSTFS_SECRET_KEY}'
-      - 'S3_ENABLE_PATH_STYLE=1'
-      - 'S3_SET_ACL=0'
-      - 'LLM_VISION_IMAGE_USE_BASE64=1'
-    env_file:
-      - .env
-    # Validate only when this profile runs, so infrastructure-only dev stays usable.
-    command:
-      - /bin/sh
-      - -ec
-      - |
-        node -e "const missing = ['APP_URL', 'AUTH_SECRET', 'KEY_VAULTS_SECRET'].filter(key => !process.env[key]); if (missing.length) { console.error('Configure ' + missing.join(', ') + ' in docker-compose/dev/.env before enabling the server profile.'); process.exit(1); }"
-        corepack enable
-        corepack pnpm install --store-dir /pnpm/store --no-frozen-lockfile
-        corepack pnpm run db:migrate
-        exec corepack pnpm exec next dev --hostname 0.0.0.0 --port 3210
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:3210/api/version', { redirect: 'manual' }).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
-      interval: 10s
-      timeout: 5s
-      start_period: 5m
-      retries: 30
-    restart: always
-
   network-service:
     image: alpine
     container_name: lobe-network
     restart: always
     ports:
-      - '${DEV_BIND_HOST:-0.0.0.0}:${RUSTFS_PORT:-9000}:9000' # RustFS API
-      - '${DEV_BIND_HOST:-0.0.0.0}:${RUSTFS_ADMIN_PORT:-9001}:9001' # RustFS Console
-      - '${DEV_BIND_HOST:-0.0.0.0}:${LOBE_PORT:-3210}:3210' # Optional Next.js server
+      - '${RUSTFS_PORT}:9000' # RustFS API
+      - '9001:9001' # RustFS Console
+      - '${LOBE_PORT}:3210' # LobeChat
     command: tail -f /dev/null
     networks:
       - lobe-network
@@ -97,7 +18,7 @@ services:
     image: paradedb/paradedb:latest-pg17
     container_name: lobe-postgres
     ports:
-      - '${DEV_BIND_HOST:-0.0.0.0}:${POSTGRES_PORT:-5432}:5432'
+      - '5432:5432'
     volumes:
       - './data:/var/lib/postgresql/data'
     environment:
@@ -118,7 +39,7 @@ services:
     image: redis:7-alpine
     container_name: lobe-redis
     ports:
-      - '${DEV_BIND_HOST:-0.0.0.0}:${REDIS_PORT:-6379}:6379'
+      - '6379:6379'
     command: redis-server --save 60 1000 --appendonly yes
     volumes:
       - 'redis_data:/data'
@@ -139,7 +60,6 @@ services:
       - RUSTFS_CONSOLE_ENABLE=true
       - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
       - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
-      - 'RUSTFS_CORS_ALLOWED_ORIGINS=${RUSTFS_CORS_ALLOWED_ORIGINS:-http://localhost:3010}'
     volumes:
       - rustfs-data:/data
     healthcheck:
@@ -147,7 +67,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
-    command: ['--access-key', '${RUSTFS_ACCESS_KEY}', '--secret-key', '${RUSTFS_SECRET_KEY}', '/data']
+    command: ['--access-key','${RUSTFS_ACCESS_KEY}','--secret-key','${RUSTFS_SECRET_KEY}','/data']
     env_file:
       - .env
 
@@ -157,15 +77,19 @@ services:
     depends_on:
       rustfs:
         condition: service_healthy
+    volumes:
+      - ./bucket.config.json:/bucket.config.json:ro
     entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        set -eu
-        mc alias set rustfs "http://network-service:9000" "$${RUSTFS_ACCESS_KEY}" "$${RUSTFS_SECRET_KEY}"
-        mc mb "rustfs/$${RUSTFS_LOBE_BUCKET}" --ignore-existing
-        printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}\n' "$${RUSTFS_LOBE_BUCKET}" > /tmp/bucket.config.json
-        mc anonymous set-json /tmp/bucket.config.json "rustfs/$${RUSTFS_LOBE_BUCKET}"
+    command: -c '
+        set -eux;
+        echo "S3_ACCESS_KEY=${RUSTFS_ACCESS_KEY}, S3_SECRET_KEY=${RUSTFS_SECRET_KEY}";
+        mc --version;
+        mc alias set rustfs "http://network-service:9000" "${RUSTFS_ACCESS_KEY}" "${RUSTFS_SECRET_KEY}";
+        mc ls rustfs || true;
+        mc mb "rustfs/lobe" --ignore-existing;
+        mc admin info rustfs || true;
+        mc anonymous set-json "/bucket.config.json" "rustfs/lobe";
+      '
     restart: 'no'
     networks:
       - lobe-network
@@ -176,7 +100,7 @@ services:
     image: searxng/searxng
     container_name: lobe-searxng
     ports:
-      - '${DEV_BIND_HOST:-0.0.0.0}:${SEARXNG_PORT:-8180}:8080'
+      - '8180:8080'
     volumes:
       - './searxng-settings.yml:/etc/searxng/settings.yml'
     environment:
@@ -186,12 +110,6 @@ services:
       - lobe-network
 
 volumes:
-  server_node_modules:
-    driver: local
-  server_next_cache:
-    driver: local
-  server_pnpm_store:
-    driver: local
   data:
     driver: local
   redis_data:

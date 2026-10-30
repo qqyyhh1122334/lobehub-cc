@@ -1,5 +1,4 @@
 // @vitest-environment node
-import type { ClientSecretPayload } from '@lobechat/types';
 import { ModelProvider } from 'model-bank';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,80 +22,67 @@ const createMockTraceOptions = (callbacks?: Partial<ChatStreamCallbacks>) => ({
   headers: new Headers(),
 });
 
-const specialProviders = [
-  { id: 'openai', payload: { apiKey: 'user-openai-key', baseURL: 'user-endpoint' } },
-  {
-    id: ModelProvider.Azure,
-    payload: {
-      apiKey: 'user-azure-key',
-      baseURL: 'https://user-azure.openai.azure.com',
-      apiVersion: '2024-06-01',
-    },
-    runtimeBaseURL: 'https://user-azure.openai.azure.com/openai/v1',
-  },
-  {
-    id: ModelProvider.AzureAI,
-    payload: {
-      apiKey: 'user-azure-key',
-      baseURL: 'user-azure-endpoint',
-    },
-  },
-  {
-    id: ModelProvider.Bedrock,
-    payload: {
-      accessKeyId: 'user-aws-id',
-      accessKeySecret: 'user-aws-secret',
-      region: 'user-aws-region',
-    },
-  },
-  {
-    id: ModelProvider.Ollama,
-    payload: { baseURL: 'https://user-ollama-url' },
-  },
-  {
-    id: ModelProvider.Cloudflare,
-    payload: { baseURLOrAccountID: 'https://user-ollama-url' },
-  },
-];
-
-const testRuntime = (providerId: string, payload?: any, runtimeBaseURL?: string) => {
-  describe(`${providerId} provider runtime`, () => {
-    it('should initialize correctly', async () => {
-      const jwtPayload: ClientSecretPayload = { apiKey: 'user-key', ...payload };
-      const runtime = await ModelRuntime.initializeWithProvider(providerId, jwtPayload);
-
-      // @ts-ignore
-      expect(runtime['_runtime']).toBeInstanceOf(providerRuntimeMap[providerId]);
-
-      if (payload?.baseURL) {
-        expect(runtime['_runtime'].baseURL).toBe(runtimeBaseURL ?? payload.baseURL);
-      }
-    });
-  });
-};
-
 let mockModelRuntime: ModelRuntime;
 beforeEach(async () => {
-  const jwtPayload: ClientSecretPayload = { apiKey: 'user-openai-key', baseURL: 'user-endpoint' };
-  mockModelRuntime = await ModelRuntime.initializeWithProvider(ModelProvider.OpenAI, jwtPayload);
+  const options = {
+    apiKey: 'user-openai-key',
+    baseURL: 'http://model.internal:8000/v1',
+  };
+  mockModelRuntime = await ModelRuntime.initializeWithProvider(ModelProvider.OpenAI, options);
 });
 
 describe('ModelRuntime', () => {
-  describe('should initialize with various providers', () => {
-    const providers = Object.values(ModelProvider).filter((i) => i !== 'lobehub');
-    const specialProviderIds = [ModelProvider.VertexAI, ...specialProviders.map((p) => p.id)];
-
-    const generalTestProviders = providers.filter(
-      (provider) => !specialProviderIds.includes(provider),
-    );
-
-    generalTestProviders.forEach((provider) => {
-      testRuntime(provider);
+  describe('intranet initialization policy', () => {
+    it('exports exactly the six supported self-hostable adapters', () => {
+      expect(Object.keys(providerRuntimeMap).sort()).toEqual([
+        'comfyui',
+        'lmstudio',
+        'ollama',
+        'openai',
+        'vllm',
+        'xinference',
+      ]);
     });
 
-    specialProviders.forEach(({ id, payload, runtimeBaseURL }) =>
-      testRuntime(id, payload, runtimeBaseURL),
+    it.each(Object.keys(providerRuntimeMap))(
+      'initializes local adapter %s with an explicit endpoint',
+      (provider) => {
+        const runtime = ModelRuntime.initializeWithProvider(provider, {
+          apiKey: 'local-key',
+          baseURL: 'http://model.internal:8000/v1',
+        });
+        expect(runtime).toBeInstanceOf(ModelRuntime);
+      },
     );
+
+    it.each(['google', 'vertexai', 'bedrock', 'unknown', 'constructor', '__proto__'])(
+      'rejects unavailable adapter %s without an OpenAI fallback',
+      (provider) => {
+        expect(() =>
+          ModelRuntime.initializeWithProvider(provider, {
+            apiKey: 'local-key',
+            baseURL: 'http://model.internal:8000/v1',
+          }),
+        ).toThrow(/unavailable/);
+      },
+    );
+
+    it.each(Object.keys(providerRuntimeMap))('requires explicit endpoint for %s', (provider) => {
+      expect(() => ModelRuntime.initializeWithProvider(provider, { apiKey: 'local-key' })).toThrow(
+        /explicit internal baseURL/,
+      );
+    });
+
+    it.each([
+      'https://secret@model.internal/v1',
+      'ftp://model.internal',
+      'http://model.internal/v1?url=https://public.example',
+      'http://model.internal/v1#remote',
+    ])('rejects unsafe endpoint %s', (baseURL) => {
+      expect(() =>
+        ModelRuntime.initializeWithProvider('openai', { apiKey: 'local-key', baseURL }),
+      ).toThrow(/Model endpoint/);
+    });
   });
 
   describe('ModelRuntime chat method', () => {

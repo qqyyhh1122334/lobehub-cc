@@ -1,26 +1,14 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 
 import { PluginStore } from './index';
 
-const baseURL = 'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public';
+afterEach(() => vi.restoreAllMocks());
 
-describe('PluginStore', () => {
-  it('should return the default index URL when no language is provided', () => {
-    const pluginStore = new PluginStore();
-    const url = pluginStore.getPluginIndexUrl();
-    expect(url).toBe(`${baseURL}/index.en-US.json`);
-  });
-
-  it('should return the index URL for a supported language', () => {
-    const pluginStore = new PluginStore();
-    const url = pluginStore.getPluginIndexUrl('en-US');
-    expect(url).toBe(`${baseURL}/index.en-US.json`);
-  });
-
-  it('should return the base URL if the provided language is not supported', () => {
-    const pluginStore = new PluginStore();
-    const url = pluginStore.getPluginIndexUrl('fr-FR');
-    expect(url).toBe(`${baseURL}/index.fr-FR.json`);
-  });
+it('does not load external plugin catalog or CDN fallbacks', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch');
+  const store = new PluginStore('https://external.example/catalog');
+  await expect(store.getPluginList('en-US')).resolves.toEqual([]);
+  expect(() => store.getPluginIndexUrl('en-US')).toThrow(/unavailable/);
+  expect(fetch).not.toHaveBeenCalled();
 });

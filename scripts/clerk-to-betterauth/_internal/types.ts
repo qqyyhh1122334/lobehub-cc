@@ -1,5 +1,5 @@
 export type ClerkToBetterAuthMode = 'test' | 'prod';
-export type DatabaseDriver = 'neon' | 'node';
+export type DatabaseDriver = 'node';
 
 export type CSVUserRow = {
   first_name: string;

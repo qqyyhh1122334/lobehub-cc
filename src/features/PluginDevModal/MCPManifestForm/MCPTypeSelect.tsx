@@ -4,8 +4,6 @@ import { CheckIcon, RouterIcon, TerminalIcon } from 'lucide-react';
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { isDesktop } from '@/const/version';
-
 // Define styles using antd-style (moved from MCPManifestForm)
 const styles = createStaticStyles(({ css }) => ({
   active: css`
@@ -103,6 +101,7 @@ interface MCPTypeSelectProps {
 
 const MCPTypeSelect = ({ value, onChange }: MCPTypeSelectProps) => {
   const { t } = useTranslation('plugin');
+  const { t: commonT } = useTranslation('common');
 
   const handleSelect = (type: string) => {
     onChange?.(type);
@@ -129,7 +128,7 @@ const MCPTypeSelect = ({ value, onChange }: MCPTypeSelectProps) => {
     <Flexbox horizontal gap={16} width={'100%'}>
       {data.map(({ label, description, features, value: itemValue, icon }) => {
         const isActive = value === itemValue;
-        const disabled = itemValue === 'stdio' && !isDesktop;
+        const disabled = itemValue === 'stdio';
         return (
           <Flexbox
             className={cx(styles.container, isActive && styles.active, disabled && styles.disabled)}
@@ -158,7 +157,7 @@ const MCPTypeSelect = ({ value, onChange }: MCPTypeSelectProps) => {
             </Flexbox>
             {disabled && (
               <Text style={{ fontSize: 12, marginTop: 8 }} type="warning">
-                {t('dev.mcp.type.stdioNotAvailable')}
+                {commonT('intranet.httpMcpOnly')}
               </Text>
             )}
           </Flexbox>

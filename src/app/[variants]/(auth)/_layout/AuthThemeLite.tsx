@@ -1,6 +1,7 @@
 'use client';
 
 import 'antd/dist/reset.css';
+import 'katex/dist/katex.min.css';
 
 import { ConfigProvider, ThemeProvider } from '@lobehub/ui';
 import { App } from 'antd';
@@ -17,7 +18,7 @@ interface AuthThemeLiteProps extends PropsWithChildren {
   globalCDN?: boolean;
 }
 
-const AuthThemeLite = memo<AuthThemeLiteProps>(({ children, globalCDN }) => {
+const AuthThemeLite = memo<AuthThemeLiteProps>(({ children }) => {
   const isDark = useIsDark();
   const currentAppearance = isDark ? 'dark' : 'light';
 
@@ -27,6 +28,7 @@ const AuthThemeLite = memo<AuthThemeLiteProps>(({ children, globalCDN }) => {
       className={'auth-layout'}
       defaultAppearance={currentAppearance}
       defaultThemeMode={currentAppearance}
+      enableCustomFonts={false}
       style={{ height: '100%' }}
       theme={{
         cssVar: { key: 'lobe-vars' },
@@ -40,7 +42,7 @@ const AuthThemeLite = memo<AuthThemeLiteProps>(({ children, globalCDN }) => {
             aAs: Link,
             imgAs: Image,
             imgUnoptimized: true,
-            proxy: globalCDN ? 'unpkg' : undefined,
+            proxy: undefined,
           }}
         >
           {children}

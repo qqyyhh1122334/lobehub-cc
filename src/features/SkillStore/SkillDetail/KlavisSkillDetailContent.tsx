@@ -1,13 +1,11 @@
 'use client';
 
-import { type Klavis } from 'klavis';
-
 import { KlavisDetailProvider } from './KlavisDetailProvider';
 import SkillDetailInner from './SkillDetailInner';
 
 export interface KlavisSkillDetailContentProps {
   identifier: string;
-  serverName: Klavis.McpServerName;
+  serverName: string;
 }
 
 export const KlavisSkillDetailContent = ({

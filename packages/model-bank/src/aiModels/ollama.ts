@@ -1,6 +1,15 @@
-import type { AIChatModelCard } from '../types/aiModel';
+import type { AIChatModelCard, AIEmbeddingModelCard } from '../types/aiModel';
 
 const ollamaChatModels: AIChatModelCard[] = [
+  {
+    abilities: { functionCall: true, reasoning: true },
+    contextWindowTokens: 32768,
+    description: 'Locally hosted Qwen3 8B. Import model weights before offline deployment.',
+    displayName: 'Qwen3 8B (Local)',
+    enabled: true,
+    id: 'qwen3:8b',
+    type: 'chat',
+  },
   {
     abilities: {
       functionCall: true,
@@ -494,6 +503,19 @@ const ollamaChatModels: AIChatModelCard[] = [
   },
 ];
 
-export const allModels = [...ollamaChatModels];
+// BGE-M3 matches the 1024-dimensional user-memory schema. Existing embeddings
+// from a different model must be re-indexed before switching providers.
+const ollamaEmbeddingModels: AIEmbeddingModelCard[] = [
+  {
+    contextWindowTokens: 8192,
+    displayName: 'BGE-M3 (Local)',
+    enabled: true,
+    id: 'bge-m3',
+    maxDimension: 1024,
+    type: 'embedding',
+  },
+];
+
+export const allModels = [...ollamaChatModels, ...ollamaEmbeddingModels];
 
 export default allModels;

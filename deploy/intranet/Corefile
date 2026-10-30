@@ -1,0 +1,12 @@
+lobehub.internal:53 {
+    hosts {
+        127.0.0.1 lobehub.internal
+    }
+}
+.:53 {
+    errors
+    # Authoritative negative answers; deliberately NO forward/proxy/fallthrough.
+    template IN ANY . {
+        rcode NXDOMAIN
+    }
+}

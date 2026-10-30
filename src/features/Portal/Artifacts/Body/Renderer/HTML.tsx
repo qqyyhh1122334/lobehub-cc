@@ -1,35 +1,19 @@
-import { HtmlPreview } from '@lobehub/ui';
+import { Flexbox, Highlighter } from '@lobehub/ui';
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 
-interface HTMLRendererProps {
+const HTMLRenderer = memo<{
   animated?: boolean;
   height?: string;
   htmlContent: string;
   width?: string;
-}
-
-const hideHtmlPreviewActions = () => null;
-
-const HTMLRenderer = memo<HTMLRendererProps>(
-  ({ animated, htmlContent, width = '100%', height = '100%' }) => {
-    return (
-      <HtmlPreview
-        actionsRender={hideHtmlPreviewActions}
-        animated={animated}
-        copyable={false}
-        downloadable={false}
-        shadow={false}
-        style={{ height, minHeight: 0, overflow: 'hidden', width }}
-        variant={'borderless'}
-        styles={{
-          content: { height: '100%' },
-          iframe: { height: '100%' },
-        }}
-      >
-        {htmlContent}
-      </HtmlPreview>
-    );
-  },
-);
-
+}>(({ htmlContent }) => {
+  const { t } = useTranslation('common');
+  return (
+    <Flexbox gap={12} padding={16} style={{ overflow: 'auto' }}>
+      <p>{t('intranet.activePreview')}</p>
+      <Highlighter language="html">{htmlContent}</Highlighter>
+    </Flexbox>
+  );
+});
 export default HTMLRenderer;

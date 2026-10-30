@@ -2,6 +2,8 @@
  * Nodemailer SMTP transport configuration
  */
 export interface NodemailerConfig {
+  /** Prevent HTTP attachment sources from initiating requests. */
+  disableUrlAccess?: boolean;
   /**
    * Authentication credentials
    */

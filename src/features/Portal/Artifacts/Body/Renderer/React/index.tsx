@@ -1,52 +1,15 @@
-import { SandpackLayout, SandpackPreview, SandpackProvider } from '@codesandbox/sandpack-react';
+import { Flexbox, Highlighter } from '@lobehub/ui';
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 
-import { useChatStore } from '@/store/chat';
-import { chatPortalSelectors } from '@/store/chat/selectors';
-
-import { createTemplateFiles } from './template';
-
-interface ReactRendererProps {
-  code: string;
-}
-
-const ReactRenderer = memo<ReactRendererProps>(({ code }) => {
-  const title = useChatStore(chatPortalSelectors.artifactTitle);
-
+/** The cloud Sandpack bundler is intentionally absent from this distribution. */
+const ReactRenderer = memo<{ code: string }>(({ code }) => {
+  const { t } = useTranslation('common');
   return (
-    <SandpackProvider
-      style={{ height: '100%' }}
-      template="vite-react-ts"
-      theme="auto"
-      customSetup={{
-        dependencies: {
-          '@ant-design/icons': 'latest',
-          '@lshay/ui': 'latest',
-          '@radix-ui/react-alert-dialog': 'latest',
-          '@radix-ui/react-dialog': 'latest',
-          '@radix-ui/react-icons': 'latest',
-          'antd': 'latest',
-          'class-variance-authority': 'latest',
-          'clsx': 'latest',
-          'lucide-react': 'latest',
-          'recharts': 'latest',
-          'tailwind-merge': 'latest',
-        },
-      }}
-      files={{
-        'App.tsx': code,
-        ...createTemplateFiles({ title }),
-      }}
-      options={{
-        externalResources: ['https://cdn.tailwindcss.com'],
-        visibleFiles: ['App.tsx'],
-      }}
-    >
-      <SandpackLayout style={{ height: '100%' }}>
-        <SandpackPreview style={{ height: '100%' }} />
-      </SandpackLayout>
-    </SandpackProvider>
+    <Flexbox gap={12} padding={16} style={{ overflow: 'auto' }}>
+      <p>{t('intranet.activePreview')}</p>
+      <Highlighter language="tsx">{code}</Highlighter>
+    </Flexbox>
   );
 });
-
 export default ReactRenderer;

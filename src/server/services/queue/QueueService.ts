@@ -8,7 +8,7 @@ import { type HealthCheckResult, type QueueMessage, type QueueStats } from './ty
  *
  * Execution modes:
  * - Local mode (default): LocalQueueServiceImpl with setTimeout for async step execution
- * - Queue mode (AGENT_RUNTIME_MODE=queue): QStashQueueServiceImpl for production
+ * - Cloud queue mode is removed; legacy environment flags cannot re-enable it.
  */
 export class QueueService {
   private impl: QueueServiceImpl;

@@ -104,7 +104,7 @@ export const ErrorBoundary = ({ resetPath }: ErrorBoundaryProps) => {
   }
 
   return (
-    <ThemeProvider theme={{ cssVar: { key: 'lobe-vars' } }}>
+    <ThemeProvider enableCustomFonts={false} theme={{ cssVar: { key: 'lobe-vars' } }}>
       <ErrorCapture error={error} resetPath={resetPath} />
     </ThemeProvider>
   );

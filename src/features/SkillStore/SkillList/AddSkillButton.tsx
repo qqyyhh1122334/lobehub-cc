@@ -1,5 +1,4 @@
 import { Button, DropdownMenu, Flexbox, Icon, Text } from '@lobehub/ui';
-import { GithubIcon } from '@lobehub/ui/icons';
 import { ChevronDown, FileArchive, Grid2x2Plus, Link, PenLine } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +7,6 @@ import DevModal from '@/features/PluginDevModal';
 import { useAgentStore } from '@/store/agent';
 import { useToolStore } from '@/store/tool';
 
-import ImportFromGithubModal from './ImportFromGithubModal';
 import ImportFromUrlModal from './ImportFromUrlModal';
 import UploadSkillModal from './UploadSkillModal';
 
@@ -25,7 +23,6 @@ const AddSkillButton = () => {
   const { t } = useTranslation('setting');
   const [showMcpModal, setMcpModal] = useState(false);
   const [showUrlModal, setUrlModal] = useState(false);
-  const [showGithubModal, setGithubModal] = useState(false);
   const [showUploadModal, setUploadModal] = useState(false);
 
   const [installCustomPlugin, updateNewDevPlugin] = useToolStore((s) => [
@@ -50,7 +47,6 @@ const AddSkillButton = () => {
         }}
       />
       <ImportFromUrlModal open={showUrlModal} onOpenChange={setUrlModal} />
-      <ImportFromGithubModal open={showGithubModal} onOpenChange={setGithubModal} />
       <UploadSkillModal open={showUploadModal} onOpenChange={setUploadModal} />
       <DropdownMenu
         nativeButton={false}
@@ -61,14 +57,6 @@ const AddSkillButton = () => {
             key: 'importUrl',
             label: <MenuLabel desc={t('tab.importFromUrl.desc')} title={t('tab.importFromUrl')} />,
             onClick: () => setUrlModal(true),
-          },
-          {
-            icon: <Icon icon={GithubIcon} />,
-            key: 'importGithub',
-            label: (
-              <MenuLabel desc={t('tab.importFromGithub.desc')} title={t('tab.importFromGithub')} />
-            ),
-            onClick: () => setGithubModal(true),
           },
           {
             icon: <Icon icon={FileArchive} />,

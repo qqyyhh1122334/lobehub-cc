@@ -1,6 +1,8 @@
+import { useTranslation } from 'react-i18next';
+import { isIntranetNavigation } from '@/security/intranet/url';
 /**
  * Link adapter — maps Next.js Link API (href prop) to react-router-dom Link (to prop).
- * External URLs (http/https) are rendered as plain <a> tags.
+ * External destinations are rendered without a navigable href.
  */
 
 import { type AnchorHTMLAttributes } from 'react';
@@ -32,6 +34,15 @@ const Link = ({
   children,
   ...rest
 }: LinkProps & { ref?: React.RefObject<HTMLAnchorElement | null> }) => {
+  const { t } = useTranslation('common');
+  if (!isIntranetNavigation(href)) {
+    return (
+      <a {...rest} ref={ref} aria-disabled="true" title={t('intranet.externalNavigation')}>
+        {children}
+      </a>
+    );
+  }
+
   if (isExternalOrNextOnly(href)) {
     return (
       <a href={href} ref={ref} {...rest}>

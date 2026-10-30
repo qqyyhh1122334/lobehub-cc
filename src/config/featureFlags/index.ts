@@ -20,7 +20,17 @@ export const getServerFeatureFlagsValue = () => {
   const flags = parseFeatureFlag(env.FEATURE_FLAGS);
 
   const result = merge(DEFAULT_FEATURE_FLAGS, flags);
-  return result;
+  return {
+    ...result,
+    check_updates: false,
+    market: false,
+    cloud_promotion: false,
+    changelog: false,
+    auth_captcha: false,
+    ai_video: false,
+    agent_onboarding: false,
+    agent_self_iteration: false,
+  };
 };
 
 export const serverFeatureFlags = (userId?: string) => {

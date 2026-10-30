@@ -2,7 +2,6 @@ import { join } from 'node:path';
 
 import * as dotenv from 'dotenv';
 import dotenvExpand from 'dotenv-expand';
-import { migrate as neonMigrate } from 'drizzle-orm/neon-serverless/migrator';
 import { migrate as nodeMigrate } from 'drizzle-orm/node-postgres/migrator';
 
 // @ts-ignore tsgo handle esm import cjs and compatibility issues
@@ -24,11 +23,7 @@ const runMigrations = async () => {
   const { serverDB } = await import('../../packages/database/src/server');
 
   const time = Date.now();
-  if (process.env.DATABASE_DRIVER === 'node') {
-    await nodeMigrate(serverDB, { migrationsFolder });
-  } else {
-    await neonMigrate(serverDB, { migrationsFolder });
-  }
+  await nodeMigrate(serverDB, { migrationsFolder });
 
   console.log('✅ database migration pass. use: %s ms', Date.now() - time);
 

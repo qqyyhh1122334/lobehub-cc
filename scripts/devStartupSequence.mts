@@ -1,48 +1,50 @@
-import type { ChildProcess } from 'node:child_process';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
-
+import { type ChildProcess, spawn } from 'node:child_process';
 import dotenv from 'dotenv';
 import dotenvExpand from 'dotenv-expand';
+import net from 'node:net';
 
-import { resolveCliNextPort, resolveLocalDevConfig } from './localDevConfig';
+const env = process.env.NODE_ENV || 'development';
 
-const configureDevEnvironment = () => {
-  const env = process.env.NODE_ENV || 'development';
-  const args = process.argv.slice(2);
-  const shellEnv = Object.entries(process.env).reduce<Record<string, string>>(
-    (acc, [key, value]) => {
-      if (typeof value === 'string') acc[key] = value;
-      return acc;
-    },
-    {},
-  );
-  const dotenvEnv: Record<string, string> = {};
-  const dotenvResult = dotenv.config({
-    override: true,
-    // Match Next's file precedence; explicit shell values still win below.
-    path: ['.env', `.env.${env}`, '.env.local', `.env.${env}.local`],
-    processEnv: dotenvEnv,
+const shellEnv = Object.entries(process.env).reduce<Record<string, string>>(
+  (acc, [key, value]) => {
+    if (typeof value === 'string') acc[key] = value;
+    return acc;
+  },
+  {},
+);
+const dotenvEnv: Record<string, string> = {};
+const dotenvResult = dotenv.config({
+  override: true,
+  path: ['.env', `.env.${env}`, `.env.${env}.local`],
+  processEnv: dotenvEnv,
+});
+
+if (dotenvResult.parsed) {
+  const expanded = dotenvExpand.expand({
+    parsed: dotenvResult.parsed,
+    processEnv: { ...dotenvEnv, ...shellEnv },
   });
 
-  // Resolve CLI PORT first so references such as APP_URL=http://localhost:${PORT} agree.
-  const cliPort = resolveCliNextPort(args);
-  if (dotenvResult.parsed) {
-    const expanded = dotenvExpand.expand({
-      parsed: dotenvResult.parsed,
-      processEnv: {
-        ...dotenvEnv,
-        ...shellEnv,
-        ...(cliPort === undefined ? {} : { PORT: String(cliPort) }),
-      },
-    });
-    Object.assign(process.env, expanded.parsed, shellEnv);
-  }
-
-  return resolveLocalDevConfig(args, process.env);
-};
+  Object.assign(process.env, expanded.parsed, shellEnv);
+}
 
 const NEXT_HOST = 'localhost';
+
+/**
+ * Resolve the Next.js dev port.
+ * Priority: -p CLI flag > PORT env var > 3010.
+ */
+const resolveNextPort = (): number => {
+  const pIndex = process.argv.indexOf('-p');
+  if (pIndex !== -1 && process.argv[pIndex + 1]) {
+    return Number(process.argv[pIndex + 1]);
+  }
+  if (process.env.PORT) return Number(process.env.PORT);
+  return 3010;
+};
+
+const NEXT_PORT = resolveNextPort();
+const NEXT_ROOT_URL = `http://${NEXT_HOST}:${NEXT_PORT}/`;
 const NEXT_READY_TIMEOUT_MS = 180_000;
 const NEXT_READY_RETRY_MS = 400;
 
@@ -51,7 +53,6 @@ const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 let nextProcess: ChildProcess | undefined;
 let viteProcess: ChildProcess | undefined;
 let shuttingDown = false;
-const startupAbort = new AbortController();
 
 const runNpmScript = (scriptName: string) =>
   spawn(npmCommand, ['run', scriptName], {
@@ -60,10 +61,7 @@ const runNpmScript = (scriptName: string) =>
     shell: process.platform === 'win32',
   });
 
-const wait = (ms: number) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms).unref();
-  });
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isPortOpen = (host: string, port: number) =>
   new Promise<boolean>((resolve) => {
@@ -79,40 +77,37 @@ const isPortOpen = (host: string, port: number) =>
     socket.setTimeout(1_000, () => onDone(false));
   });
 
-const waitForNextReady = async (port: number) => {
+const waitForNextReady = async () => {
   const startedAt = Date.now();
 
-  while (!shuttingDown && Date.now() - startedAt < NEXT_READY_TIMEOUT_MS) {
-    if (await isPortOpen(NEXT_HOST, port)) return true;
+  while (Date.now() - startedAt < NEXT_READY_TIMEOUT_MS) {
+    if (await isPortOpen(NEXT_HOST, NEXT_PORT)) return;
     await wait(NEXT_READY_RETRY_MS);
   }
 
-  if (shuttingDown) return false;
-
   throw new Error(
-    `Next server was not ready within ${NEXT_READY_TIMEOUT_MS / 1000}s on ${NEXT_HOST}:${port}`,
+    `Next server was not ready within ${NEXT_READY_TIMEOUT_MS / 1000}s on ${NEXT_HOST}:${NEXT_PORT}`,
   );
 };
 
-const prewarmNextRootCompile = async (rootUrl: string) => {
+const prewarmNextRootCompile = async () => {
   const startedAt = Date.now();
-  const response = await fetch(rootUrl, {
-    signal: AbortSignal.any([startupAbort.signal, AbortSignal.timeout(120_000)]),
-  });
+  const response = await fetch(NEXT_ROOT_URL, { signal: AbortSignal.timeout(120_000) });
   const elapsed = ((Date.now() - startedAt) / 1000).toFixed(2);
-  console.log(`✅ Next prewarm request finished (${response.status}) in ${elapsed}s ${rootUrl}`);
+  console.log(`✅ Next prewarm request finished (${response.status}) in ${elapsed}s ${NEXT_ROOT_URL}`);
 };
 
-const runNextBackgroundTasks = (port: number, rootUrl: string) => {
+const runNextBackgroundTasks = () => {
   setTimeout(() => {
-    if (!shuttingDown) console.log(`🔁 Next server URL: ${rootUrl}`);
-  }, 2_000).unref();
+    console.log(`🔁 Next server URL: ${NEXT_ROOT_URL}`);
+  }, 2_000);
 
   void (async () => {
     try {
-      if (await waitForNextReady(port)) await prewarmNextRootCompile(rootUrl);
+      await waitForNextReady();
+      await prewarmNextRootCompile();
     } catch (error) {
-      if (!shuttingDown) console.warn('⚠️ Next prewarm skipped:', error);
+      console.warn('⚠️ Next prewarm skipped:', error);
     }
   })();
 };
@@ -122,57 +117,49 @@ const terminateChild = (child?: ChildProcess) => {
   child.kill('SIGTERM');
 };
 
-const shutdownAll = (exitCode: number) => {
+const shutdownAll = (signal: NodeJS.Signals) => {
   if (shuttingDown) return;
   shuttingDown = true;
-  startupAbort.abort();
 
   terminateChild(viteProcess);
   terminateChild(nextProcess);
 
-  process.exitCode = exitCode;
+  process.exitCode = signal === 'SIGINT' ? 130 : 143;
 };
 
-const watchChildExit = (child: ChildProcess, name: 'next' | 'vite') =>
-  new Promise<void>((resolve) => {
-    child.once('error', (error) => {
-      console.error(`❌ Failed to start ${name}:`, error.message);
-      shutdownAll(1);
-      resolve();
-    });
-    child.once('exit', (code, signal) => {
-      if (!shuttingDown) {
-        console.error(
-          `❌ ${name} exited unexpectedly (code: ${code ?? 'null'}, signal: ${signal ?? 'null'})`,
-        );
-        shutdownAll(code && code > 0 ? code : 1);
-      }
-      resolve();
-    });
+const watchChildExit = (child: ChildProcess, name: 'next' | 'vite') => {
+  child.once('exit', (code, signal) => {
+    if (!shuttingDown) {
+      console.error(
+        `❌ ${name} exited unexpectedly (code: ${code ?? 'null'}, signal: ${signal ?? 'null'})`,
+      );
+      shutdownAll('SIGTERM');
+    }
   });
+};
 
 const main = async () => {
-  const localConfig = configureDevEnvironment();
-  Object.assign(process.env, localConfig.env);
+  process.once('SIGINT', () => shutdownAll('SIGINT'));
+  process.once('SIGTERM', () => shutdownAll('SIGTERM'));
 
-  process.once('SIGINT', () => shutdownAll(130));
-  process.once('SIGTERM', () => shutdownAll(143));
-
-  nextProcess = spawn('npx', ['next', 'dev', '-p', String(localConfig.port)], {
+  nextProcess = spawn('npx', ['next', 'dev', '-p', String(NEXT_PORT)], {
     env: process.env,
     stdio: 'inherit',
     shell: process.platform === 'win32',
   });
-  const nextExited = watchChildExit(nextProcess, 'next');
+  watchChildExit(nextProcess, 'next');
 
   viteProcess = runNpmScript('dev:spa');
-  const viteExited = watchChildExit(viteProcess, 'vite');
-  runNextBackgroundTasks(localConfig.port, `${localConfig.backendUrl}/`);
+  watchChildExit(viteProcess, 'vite');
+  runNextBackgroundTasks();
 
-  await Promise.race([nextExited, viteExited]);
+  await Promise.race([
+    new Promise((resolve) => nextProcess?.once('exit', resolve)),
+    new Promise((resolve) => viteProcess?.once('exit', resolve)),
+  ]);
 };
 
 void main().catch((error) => {
   console.error('❌ dev startup sequence failed:', error);
-  shutdownAll(1);
+  shutdownAll('SIGTERM');
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useAnalytics } from '@lobehub/analytics/react';
+import { useAnalytics } from '@/libs/analytics/intranet';
 import { Button, Flexbox, Icon, Text, TextArea } from '@lobehub/ui';
 import { ThumbsDownIcon, ThumbsUpIcon } from 'lucide-react';
 import { memo, useState } from 'react';

@@ -1,4 +1,20 @@
 export default {
+  'intranet.modelImportRequired':
+    'Ask your administrator to import the approved {{model}} model into the intranet. Online model downloads are disabled.',
+  'intranet.speechService':
+    'Speech uses only an administrator-configured intranet OpenAI-compatible service.',
+  'intranet.nativeSpeechUnavailable':
+    'Native browser speech is disabled. Use an administrator-approved intranet speech service.',
+  'intranetUnavailable': 'This feature is unavailable in the intranet edition.',
+  'intranet.externalNavigation': 'External navigation is disabled in the intranet edition.',
+  'intranet.activePreview':
+    'Interactive previews are disabled in the intranet edition. Source is available below.',
+  'intranet.officePreview': 'Online Office previews are disabled in the intranet edition.',
+  'intranet.downloadDocument': 'Download document for local viewing',
+  'intranet.httpMcpOnly': 'Only administrator-approved internal HTTP MCP endpoints are supported.',
+  'intranet.stdioUnavailable':
+    'STDIO subprocesses are disabled in the intranet edition. Use an administrator-approved internal HTTP MCP endpoint.',
+
   'about': 'About',
   'advanceSettings': 'Advanced Settings',
   'alert.cloud.action': 'Try now',

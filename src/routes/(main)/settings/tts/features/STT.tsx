@@ -17,6 +17,7 @@ import { sttOptions } from './const';
 
 const STT = memo(() => {
   const { t } = useTranslation('setting');
+  const { t: commonT } = useTranslation('common');
   const [form] = Form.useForm();
   const { tts } = useUserStore(settingsSelectors.currentSettings, isEqual);
   const [setSettings, isUserStateInit] = useUserStore((s) => [s.setSettings, s.isUserStateInit]);
@@ -28,7 +29,7 @@ const STT = memo(() => {
     children: [
       {
         children: <Select options={sttOptions} style={{ width: 448 }} />,
-        desc: t('settingTTS.sttService.desc'),
+        desc: commonT('intranet.speechService'),
         label: t('settingTTS.sttService.title'),
         name: 'sttServer',
       },

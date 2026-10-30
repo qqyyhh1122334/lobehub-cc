@@ -852,179 +852,19 @@ describe('LobeOllamaAI', () => {
   });
 
   describe('pullModel', () => {
-    it('should successfully pull a model', async () => {
-      const mockAsyncIterator = {
-        [Symbol.asyncIterator]: () => mockAsyncIterator,
-        next: vi
-          .fn()
-          .mockResolvedValueOnce({
-            done: false,
-            value: { status: 'downloading', completed: 50, total: 100 },
-          })
-          .mockResolvedValueOnce({ done: true, value: undefined }),
-      };
+    it.each([
+      { model: 'registry.ollama.ai/library/qwen3:8b' },
+      { insecure: true, model: 'registry.example.org/unapproved:model' },
+    ])('rejects runtime downloads before contacting Ollama: %s', async (params) => {
+      const controller = new AbortController();
+      const addListener = vi.spyOn(controller.signal, 'addEventListener');
 
-      vi.mocked(Ollama.prototype.pull).mockResolvedValue(mockAsyncIterator as any);
-
-      const response = await ollamaAI.pullModel({ model: 'test-model' });
-
-      expect(response).toBeInstanceOf(Response);
-      expect(response.headers.get('Content-Type')).toBe('application/json');
-    });
-
-    it('should pass insecure parameter', async () => {
-      const pullMock = vi.fn().mockResolvedValue({
-        [Symbol.asyncIterator]: () => ({
-          next: vi.fn().mockResolvedValue({ done: true, value: undefined }),
-        }),
-      });
-      vi.mocked(Ollama.prototype.pull).mockImplementation(pullMock);
-
-      await ollamaAI.pullModel({ model: 'test-model', insecure: true });
-
-      expect(pullMock).toHaveBeenCalledWith({
-        insecure: true,
-        model: 'test-model',
-        stream: true,
-      });
-    });
-
-    it('should default insecure to false', async () => {
-      const pullMock = vi.fn().mockResolvedValue({
-        [Symbol.asyncIterator]: () => ({
-          next: vi.fn().mockResolvedValue({ done: true, value: undefined }),
-        }),
-      });
-      vi.mocked(Ollama.prototype.pull).mockImplementation(pullMock);
-
-      await ollamaAI.pullModel({ model: 'test-model' });
-
-      expect(pullMock).toHaveBeenCalledWith({
-        insecure: false,
-        model: 'test-model',
-        stream: true,
-      });
-    });
-
-    it('should handle abort signal', async () => {
-      const abortController = new AbortController();
-      const abortMock = vi.fn();
-      vi.mocked(Ollama.prototype.abort).mockImplementation(abortMock);
-
-      const mockAsyncIterator = {
-        [Symbol.asyncIterator]: () => mockAsyncIterator,
-        next: vi.fn().mockResolvedValue({ done: true, value: undefined }),
-      };
-
-      vi.mocked(Ollama.prototype.pull).mockResolvedValue(mockAsyncIterator as any);
-
-      const responsePromise = ollamaAI.pullModel(
-        { model: 'test-model' },
-        { signal: abortController.signal },
+      await expect(ollamaAI.pullModel(params, { signal: controller.signal })).rejects.toThrow(
+        'Runtime model downloads are disabled in the intranet edition',
       );
 
-      abortController.abort();
-
-      await responsePromise;
-
-      expect(abortMock).toHaveBeenCalled();
-    });
-
-    it('should handle OllamaServiceUnavailable error', async () => {
-      const errorMock = new Error('fetch failed');
-      vi.mocked(Ollama.prototype.pull).mockRejectedValue(errorMock);
-
-      const response = await ollamaAI.pullModel({ model: 'test-model' });
-
-      // Status code 472 is for OllamaServiceUnavailable (see errorResponse.ts)
-      expect(response.status).toBe(472);
-      const body = await response.json();
-      expect(body).toMatchObject({
-        errorType: AgentRuntimeErrorType.OllamaServiceUnavailable,
-      });
-    });
-
-    it('should handle AbortError', async () => {
-      const abortError = new Error('Aborted');
-      abortError.name = 'AbortError';
-      vi.mocked(Ollama.prototype.pull).mockRejectedValue(abortError);
-
-      const response = await ollamaAI.pullModel({ model: 'test-model' });
-
-      expect(response.status).toBe(499);
-      const body = await response.json();
-      expect(body).toEqual({
-        model: 'test-model',
-        status: 'cancelled',
-      });
-    });
-
-    it('should handle generic errors', async () => {
-      const genericError = new Error('Generic error');
-      vi.mocked(Ollama.prototype.pull).mockRejectedValue(genericError);
-
-      const response = await ollamaAI.pullModel({ model: 'test-model' });
-
-      expect(response.status).toBe(500);
-      const body = await response.json();
-      expect(body).toEqual({
-        error: 'Generic error',
-        model: 'test-model',
-        status: 'error',
-      });
-    });
-
-    it('should handle non-Error objects', async () => {
-      vi.mocked(Ollama.prototype.pull).mockRejectedValue('String error');
-
-      const response = await ollamaAI.pullModel({ model: 'test-model' });
-
-      expect(response.status).toBe(500);
-      const body = await response.json();
-      expect(body).toEqual({
-        error: 'String error',
-        model: 'test-model',
-        status: 'error',
-      });
-    });
-
-    it('should handle stream cancellation via reader cancel', async () => {
-      const abortController = new AbortController();
-      const abortMock = vi.fn();
-      const removeEventListenerSpy = vi.spyOn(abortController.signal, 'removeEventListener');
-      vi.mocked(Ollama.prototype.abort).mockImplementation(abortMock);
-
-      const mockAsyncIterator = {
-        [Symbol.asyncIterator]: () => mockAsyncIterator,
-        next: vi.fn().mockResolvedValue({ done: false, value: { status: 'downloading' } }),
-      };
-
-      vi.mocked(Ollama.prototype.pull).mockResolvedValue(mockAsyncIterator as any);
-
-      const response = await ollamaAI.pullModel(
-        { model: 'test-model' },
-        { signal: abortController.signal },
-      );
-
-      const reader = response.body?.getReader();
-      // Cancel the stream to trigger onCancel callback
-      await reader?.cancel();
-
-      // Verify that abort was called and listener was removed
-      expect(abortMock).toHaveBeenCalled();
-      expect(removeEventListenerSpy).toHaveBeenCalled();
-    });
-
-    it('should remove abort listener on error', async () => {
-      const abortController = new AbortController();
-      const removeEventListenerSpy = vi.spyOn(abortController.signal, 'removeEventListener');
-
-      const genericError = new Error('Generic error');
-      vi.mocked(Ollama.prototype.pull).mockRejectedValue(genericError);
-
-      await ollamaAI.pullModel({ model: 'test-model' }, { signal: abortController.signal });
-
-      expect(removeEventListenerSpy).toHaveBeenCalled();
+      expect(Ollama.prototype.pull).not.toHaveBeenCalled();
+      expect(addListener).not.toHaveBeenCalled();
     });
   });
 

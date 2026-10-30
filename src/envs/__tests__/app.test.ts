@@ -1,159 +1,116 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-describe('getServerConfig', () => {
-  beforeEach(() => {
-    // Reset modules to clear the cached config
-    vi.resetModules();
+const controlledKeys = [
+  'APP_URL',
+  'INTERNAL_APP_URL',
+  'PORT',
+  'AGENTS_INDEX_URL',
+  'PLUGINS_INDEX_URL',
+  'VERCEL',
+  'VERCEL_ENV',
+  'VERCEL_URL',
+  'VERCEL_BRANCH_URL',
+  'VERCEL_PROJECT_PRODUCTION_URL',
+  'AGENT_RUNTIME_MODE',
+  'QSTASH_TOKEN',
+  'NEXT_PUBLIC_SENTRY_DSN',
+  'TELEMETRY_DISABLED',
+] as const;
+
+beforeEach(() => {
+  vi.resetModules();
+  for (const key of controlledKeys) vi.stubEnv(key, undefined);
+  vi.stubEnv('NODE_ENV', 'test');
+});
+afterEach(() => vi.unstubAllEnvs());
+
+const readConfig = async () => (await import('../app')).getAppConfig();
+
+describe('intranet application URLs', () => {
+  it('uses local catalog URLs when no environment overrides are set', async () => {
+    const config = await readConfig();
+    expect(config.AGENTS_INDEX_URL).toBe('http://localhost:3210/intranet/catalog/agents');
+    expect(config.PLUGINS_INDEX_URL).toBe('http://localhost:3210/intranet/catalog/plugins');
   });
 
-  describe('index url', () => {
-    it('should return default URLs when no environment variables are set', async () => {
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.AGENTS_INDEX_URL).toBe(
-        'https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public',
-      );
-      expect(config.PLUGINS_INDEX_URL).toBe(
-        'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public',
-      );
-    });
-
-    it('should return custom URLs when environment variables are set', async () => {
-      process.env.AGENTS_INDEX_URL = 'https://custom-agents-url.com';
-      process.env.PLUGINS_INDEX_URL = 'https://custom-plugins-url.com';
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.AGENTS_INDEX_URL).toBe('https://custom-agents-url.com');
-      expect(config.PLUGINS_INDEX_URL).toBe('https://custom-plugins-url.com');
-    });
-
-    it('should return default URLs when environment variables are empty string', async () => {
-      process.env.AGENTS_INDEX_URL = '';
-      process.env.PLUGINS_INDEX_URL = '';
-
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.AGENTS_INDEX_URL).toBe(
-        'https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public',
-      );
-      expect(config.PLUGINS_INDEX_URL).toBe(
-        'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public',
-      );
-    });
+  it('uses the explicit APP_URL as the local catalog origin', async () => {
+    vi.stubEnv('APP_URL', 'https://chat.corp.internal');
+    const config = await readConfig();
+    expect(config.AGENTS_INDEX_URL).toBe('https://chat.corp.internal/intranet/catalog/agents');
+    expect(config.PLUGINS_INDEX_URL).toBe('https://chat.corp.internal/intranet/catalog/plugins');
   });
 
-  describe('INTERNAL_APP_URL', () => {
-    it('should default to APP_URL when INTERNAL_APP_URL is not set', async () => {
-      process.env.APP_URL = 'https://example.com';
-      delete process.env.INTERNAL_APP_URL;
+  it('retains explicit private catalog overrides', async () => {
+    vi.stubEnv('AGENTS_INDEX_URL', 'http://catalog.internal/agents');
+    vi.stubEnv('PLUGINS_INDEX_URL', 'http://catalog.internal/plugins');
+    const config = await readConfig();
+    expect(config.AGENTS_INDEX_URL).toBe('http://catalog.internal/agents');
+    expect(config.PLUGINS_INDEX_URL).toBe('http://catalog.internal/plugins');
+  });
 
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.INTERNAL_APP_URL).toBe('https://example.com');
-    });
+  it('uses local catalogs when overrides are empty strings', async () => {
+    vi.stubEnv('AGENTS_INDEX_URL', '');
+    vi.stubEnv('PLUGINS_INDEX_URL', '');
+    const config = await readConfig();
+    expect(config.AGENTS_INDEX_URL).toBe('http://localhost:3210/intranet/catalog/agents');
+    expect(config.PLUGINS_INDEX_URL).toBe('http://localhost:3210/intranet/catalog/plugins');
+  });
 
-    it('should use INTERNAL_APP_URL when explicitly set', async () => {
-      process.env.APP_URL = 'https://public.example.com';
-      process.env.INTERNAL_APP_URL = 'http://localhost:3210';
+  it('defaults INTERNAL_APP_URL to the explicitly configured APP_URL', async () => {
+    vi.stubEnv('APP_URL', 'https://chat.corp.internal');
+    const config = await readConfig();
+    expect(config.INTERNAL_APP_URL).toBe('https://chat.corp.internal');
+  });
 
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.INTERNAL_APP_URL).toBe('http://localhost:3210');
-    });
+  it('uses the explicit internal service URL separately from the browser origin', async () => {
+    vi.stubEnv('APP_URL', 'https://chat.corp.internal');
+    vi.stubEnv('INTERNAL_APP_URL', 'http://lobehub:3210');
+    const config = await readConfig();
+    expect(config.APP_URL).toBe('https://chat.corp.internal');
+    expect(config.INTERNAL_APP_URL).toBe('http://lobehub:3210');
+  });
 
-    it('should use INTERNAL_APP_URL over APP_URL when both are set', async () => {
-      process.env.APP_URL = 'https://public.example.com';
-      process.env.INTERNAL_APP_URL = 'http://internal-service:3210';
+  it('retains the loopback default when old Vercel variables are set', async () => {
+    vi.stubEnv('VERCEL', '1');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('VERCEL_PROJECT_PRODUCTION_URL', 'old-project.vercel.app');
+    vi.stubEnv('VERCEL_URL', 'old-deployment.vercel.app');
+    vi.stubEnv('VERCEL_BRANCH_URL', 'old-branch.vercel.app');
+    const config = await readConfig();
+    expect(config.APP_URL).toBe('http://localhost:3210');
+    expect(config.INTERNAL_APP_URL).toBe('http://localhost:3210');
+    expect(config.AGENTS_INDEX_URL).not.toContain('vercel.app');
+  });
 
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.APP_URL).toBe('https://public.example.com');
-      expect(config.INTERNAL_APP_URL).toBe('http://internal-service:3210');
-    });
+  it('never substitutes Vercel preview URLs for the explicit intranet origin', async () => {
+    vi.stubEnv('APP_URL', 'https://chat.corp.internal');
+    vi.stubEnv('VERCEL', '1');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_URL', 'old-preview.vercel.app');
+    expect((await readConfig()).APP_URL).toBe('https://chat.corp.internal');
+  });
 
-    it('should handle localhost INTERNAL_APP_URL for bypassing CDN', async () => {
-      process.env.APP_URL = 'https://cloudflare-proxied.com';
-      process.env.INTERNAL_APP_URL = 'http://127.0.0.1:3210';
+  it('uses localhost:3010 for development', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    expect((await readConfig()).APP_URL).toBe('http://localhost:3010');
+  });
 
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.INTERNAL_APP_URL).toBe('http://127.0.0.1:3210');
-    });
+  it('honors an explicit local port', async () => {
+    vi.stubEnv('PORT', '4000');
+    expect((await readConfig()).APP_URL).toBe('http://localhost:4000');
   });
 });
 
-describe('APP_URL fallback', () => {
-  beforeEach(() => {
-    vi.resetModules();
-    // Clean up all related env vars
-    delete process.env.APP_URL;
-    delete process.env.VERCEL;
-    delete process.env.VERCEL_ENV;
-    delete process.env.VERCEL_URL;
-    delete process.env.VERCEL_BRANCH_URL;
-    delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
-  });
-
-  it('should use APP_URL when explicitly set', async () => {
-    process.env.APP_URL = 'https://custom-app.com';
-    process.env.VERCEL = '1';
-
-    const { getAppConfig } = await import('../app');
-    const config = getAppConfig();
-    expect(config.APP_URL).toBe('https://custom-app.com');
-  });
-
-  describe('Vercel environment', () => {
-    it('should use VERCEL_PROJECT_PRODUCTION_URL in production', async () => {
-      process.env.VERCEL = '1';
-      process.env.VERCEL_ENV = 'production';
-      process.env.VERCEL_PROJECT_PRODUCTION_URL = 'lobechat.vercel.app';
-      process.env.VERCEL_BRANCH_URL = 'lobechat-git-main-org.vercel.app';
-      process.env.VERCEL_URL = 'lobechat-abc123.vercel.app';
-
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.APP_URL).toBe('https://lobechat.vercel.app');
-    });
-
-    it('should use VERCEL_URL in preview environment', async () => {
-      process.env.VERCEL = '1';
-      process.env.VERCEL_ENV = 'preview';
-      process.env.VERCEL_BRANCH_URL = 'lobechat-git-feature-org.vercel.app';
-      process.env.VERCEL_URL = 'lobechat-abc123.vercel.app';
-
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.APP_URL).toBe('https://lobechat-abc123.vercel.app');
-    });
-
-    it('should fallback to VERCEL_BRANCH_URL when VERCEL_URL is not set', async () => {
-      process.env.VERCEL = '1';
-      process.env.VERCEL_ENV = 'preview';
-      process.env.VERCEL_BRANCH_URL = 'lobechat-git-feature-org.vercel.app';
-
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.APP_URL).toBe('https://lobechat-git-feature-org.vercel.app');
-    });
-  });
-
-  describe('local environment', () => {
-    it('should use localhost:3010 in development', async () => {
-      vi.stubEnv('NODE_ENV', 'development');
-
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.APP_URL).toBe('http://localhost:3010');
-    });
-
-    it('should use localhost:3210 in non-development', async () => {
-      vi.stubEnv('NODE_ENV', 'test');
-
-      const { getAppConfig } = await import('../app');
-      const config = getAppConfig();
-      expect(config.APP_URL).toBe('http://localhost:3210');
-    });
+describe('intranet capabilities are not enabled by legacy credentials', () => {
+  it('keeps local execution and telemetry suppression immutable', async () => {
+    vi.stubEnv('AGENT_RUNTIME_MODE', 'queue');
+    vi.stubEnv('QSTASH_TOKEN', 'old-token');
+    vi.stubEnv('NEXT_PUBLIC_SENTRY_DSN', 'https://old-telemetry.invalid');
+    vi.stubEnv('TELEMETRY_DISABLED', '0');
+    const config = await readConfig();
+    expect(config.enableQueueAgentRuntime).toBe(false);
+    expect(config.NEXT_PUBLIC_ENABLE_SENTRY).toBe(false);
+    expect(config.TELEMETRY_DISABLED).toBe(true);
   });
 });

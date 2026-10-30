@@ -1,4 +1,4 @@
-import { getSingletonAnalyticsOptional } from '@lobehub/analytics';
+import { getSingletonAnalyticsOptional } from '@/libs/analytics/intranet';
 
 export const ONBOARDING_METRICS_EVENTS = {
   COMPLETED: 'onboarding_completed',

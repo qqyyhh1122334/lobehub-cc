@@ -8,13 +8,7 @@ import { createAppRouter } from '@/utils/router';
 
 import { desktopRoutes } from './router/desktopRouter.config';
 
-const debugProxyBase = '/_dangerous_local_dev_proxy';
-const basename =
-  window.__DEBUG_PROXY__ || window.location.pathname.startsWith(debugProxyBase)
-    ? debugProxyBase
-    : undefined;
-
-const router = createAppRouter(desktopRoutes, { basename });
+const router = createAppRouter(desktopRoutes);
 
 createRoot(document.getElementById('root')!).render(
   <BootErrorBoundary>

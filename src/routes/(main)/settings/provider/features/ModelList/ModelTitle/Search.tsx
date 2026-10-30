@@ -1,13 +1,12 @@
-import { type InputProps } from '@lobehub/ui';
 import { SearchBar } from '@lobehub/ui';
 import { useDebounce } from 'ahooks';
-import { memo, useEffect, useRef, useState } from 'react';
+import { type ComponentProps, memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface SearchProps {
   onChange: (value: string) => void;
   value: string;
-  variant?: InputProps['variant'];
+  variant?: ComponentProps<typeof SearchBar>['variant'];
 }
 
 const Search = memo<SearchProps>(({ value, onChange, variant }) => {

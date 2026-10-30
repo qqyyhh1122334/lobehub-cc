@@ -1,10 +1,10 @@
 import './env';
 
 export type MigrationMode = 'test' | 'prod';
-export type DatabaseDriver = 'neon' | 'node';
+export type DatabaseDriver = 'node';
 
 const DEFAULT_MODE: MigrationMode = 'test';
-const DEFAULT_DATABASE_DRIVER: DatabaseDriver = 'neon';
+const DEFAULT_DATABASE_DRIVER: DatabaseDriver = 'node';
 
 export function getMigrationMode(): MigrationMode {
   const mode = process.env.NEXTAUTH_TO_BETTERAUTH_MODE;
@@ -28,7 +28,7 @@ export function getDatabaseUrl(mode = getMigrationMode()): string {
 
 export function getDatabaseDriver(): DatabaseDriver {
   const driver = process.env.NEXTAUTH_TO_BETTERAUTH_DATABASE_DRIVER;
-  if (driver === 'neon' || driver === 'node') return driver;
+  if (driver && driver !== 'node') throw new Error('Only the node PostgreSQL driver is supported');
   return DEFAULT_DATABASE_DRIVER;
 }
 

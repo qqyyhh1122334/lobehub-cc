@@ -110,7 +110,7 @@ export const getAuthConfig = () => {
     client: {},
     server: {
       AUTH_SECRET: z.string().optional(),
-      AUTH_SSO_PROVIDERS: z.string().optional().default(''),
+      AUTH_SSO_PROVIDERS: z.literal('').optional().default(''),
       AUTH_TRUSTED_ORIGINS: z.string().optional(),
       AUTH_EMAIL_VERIFICATION: z.boolean().optional().default(false),
       AUTH_ENABLE_MAGIC_LINK: z.boolean().optional().default(false),

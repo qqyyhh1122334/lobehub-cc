@@ -1,68 +1,26 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KlavisService } from './index';
 
-const mocks = vi.hoisted(() => ({
-  PluginModel: vi.fn(),
-  pluginQuery: vi.fn(),
-}));
+describe('Klavis is unavailable in the intranet edition', () => {
+  afterEach(() => vi.unstubAllEnvs());
 
-vi.mock('@/database/models/plugin', () => ({
-  PluginModel: mocks.PluginModel,
-}));
-
-vi.mock('@/libs/klavis', () => ({
-  getKlavisClient: vi.fn(),
-  isKlavisClientAvailable: vi.fn(() => true),
-}));
-
-vi.mock('debug', () => ({
-  default: vi.fn(() => vi.fn()),
-}));
-
-describe('KlavisService', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.PluginModel.mockImplementation(() => ({
-      query: mocks.pluginQuery,
-    }));
+  it('never advertises legacy cloud manifests even with an API key', async () => {
+    vi.stubEnv('KLAVIS_API_KEY', 'legacy-key');
+    const service = new KlavisService({ db: {} as never, userId: 'user-1' });
+    expect(await service.getKlavisManifests()).toEqual([]);
   });
 
-  describe('getKlavisManifests', () => {
-    it('filters deprecated Klavis providers from server manifests', async () => {
-      mocks.pluginQuery.mockResolvedValue([
-        {
-          customParams: { klavis: { isAuthenticated: true, serverName: 'Gmail' } },
-          identifier: 'gmail',
-          manifest: {
-            api: [{ name: 'sendEmail', parameters: { type: 'object' } }],
-            meta: { title: 'Gmail' },
-          },
-        },
-        {
-          customParams: { klavis: { isAuthenticated: true, serverName: 'Notion' } },
-          identifier: 'notion',
-          manifest: {
-            api: [{ name: 'notion-search', parameters: { type: 'object' } }],
-            meta: { title: 'Notion' },
-          },
-        },
-        {
-          customParams: { klavis: { isAuthenticated: false, serverName: 'Google Calendar' } },
-          identifier: 'google-calendar',
-          manifest: {
-            api: [{ name: 'listEvents', parameters: { type: 'object' } }],
-            meta: { title: 'Google Calendar' },
-          },
-        },
-      ]);
-
-      const service = new KlavisService({ db: {} as any, userId: 'user-1' });
-
-      const manifests = await service.getKlavisManifests();
-
-      expect(manifests.map((manifest) => manifest.identifier)).toEqual(['gmail']);
+  it('returns a clear failure without creating a client or contacting the network', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const result = await new KlavisService().executeKlavisTool({
+      args: {},
+      identifier: 'gmail',
+      toolName: 'sendEmail',
     });
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('INTRANET_FEATURE_DISABLED');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });

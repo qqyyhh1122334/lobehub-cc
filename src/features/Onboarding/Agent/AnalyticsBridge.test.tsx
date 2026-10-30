@@ -10,7 +10,7 @@ vi.mock('@/services/onboardingMetrics', () => ({
 }));
 
 const useAnalyticsMock = vi.fn();
-vi.mock('@lobehub/analytics/react', () => ({
+vi.mock('@/libs/analytics/intranet', () => ({
   useAnalytics: () => useAnalyticsMock(),
 }));
 

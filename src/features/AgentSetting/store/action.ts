@@ -7,7 +7,7 @@ import {
 } from '@lobechat/prompts';
 import { type TracePayload } from '@lobechat/types';
 import { TraceNameMap, TraceTopicType } from '@lobechat/types';
-import { getSingletonAnalyticsOptional } from '@lobehub/analytics';
+import { getSingletonAnalyticsOptional } from '@/libs/analytics/intranet';
 import { type PartialDeep } from 'type-fest';
 import { type StateCreator } from 'zustand/vanilla';
 

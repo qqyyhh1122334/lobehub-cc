@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": ".next/cache/intranet.tsbuildinfo",
+    "types": ["node"]
+  },
+  "exclude": [
+    "node_modules",
+    "**/*.test.*",
+    "**/__tests__/**",
+    "apps/**",
+    "e2e/**",
+    "tests/**",
+    "src/app/desktop/**",
+    "src/app/(backend)/trpc/desktop/**"
+  ],
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/**/*.d.ts",
+    "src/app/**/*.ts",
+    "src/app/**/*.tsx",
+    "src/proxy.ts",
+    "src/instrumentation.ts",
+    "src/instrumentation.node.ts",
+    "src/spa/entry.web.tsx",
+    "src/spa/entry.mobile.tsx",
+    "next.config.ts",
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    "src/**/*.web.ts",
+    "src/**/*.web.tsx",
+    "src/**/*.mobile.ts",
+    "src/**/*.mobile.tsx",
+    "src/**/*.vite.ts",
+    "src/**/*.vite.tsx",
+    "packages/**/*.web.ts",
+    "packages/**/*.web.tsx",
+    "packages/**/*.mobile.ts",
+    "packages/**/*.mobile.tsx",
+    "packages/**/*.vite.ts",
+    "packages/**/*.vite.tsx",
+    "src/locales/default/**/*.ts",
+    "packages/**/*.d.ts"
+  ],
+  "references": []
+}

@@ -48,8 +48,6 @@ import type {
   UserServiceModelConfig,
 } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
-import { type FlowControl } from '@upstash/qstash';
-import { Client } from '@upstash/workflow';
 import debug from 'debug';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { join } from 'pathe';
@@ -66,6 +64,8 @@ import { UserMemoryModel } from '@/database/models/userMemory';
 import { UserMemorySourceBenchmarkLoCoMoModel } from '@/database/models/userMemory/sources/benchmarkLoCoMo';
 import { AiInfraRepos } from '@/database/repositories/aiInfra';
 import { getServerDB } from '@/database/server';
+import { workflowClient } from '@/libs/qstash';
+import { assertLocalModelConfiguration } from '@/server/intranet/services';
 import { getServerGlobalConfig } from '@/server/globalConfig';
 import { type MemoryAgentConfig } from '@/server/globalConfig/parseMemoryExtractionConfig';
 import { parseMemoryExtractionConfig } from '@/server/globalConfig/parseMemoryExtractionConfig';
@@ -503,6 +503,7 @@ export const resolveRuntimeAgentConfig = (
         source: 'user-vault' as const,
       });
 
+      assertLocalModelConfiguration(provider, undefined);
       return ModelRuntime.initializeWithProvider(provider, { userId: options?.userId }, hooks);
     }
 
@@ -525,6 +526,7 @@ export const resolveRuntimeAgentConfig = (
 
     // Only use the user baseURL if we are also using their API key; otherwise fall back entirely
     // to system config to avoid mixing credentials.
+    assertLocalModelConfiguration(provider, userBaseURL);
     return ModelRuntime.initializeWithProvider(provider, {
       apiKey: userApiKey,
       baseURL: userBaseURL,
@@ -539,6 +541,10 @@ export const resolveRuntimeAgentConfig = (
     source: 'system-config' as const,
   });
 
+  assertLocalModelConfiguration(
+    agent.provider || 'openai',
+    agent.baseURL || options?.fallback?.baseURL,
+  );
   return ModelRuntime.initializeWithProvider(agent.provider || 'openai', {
     apiKey: agent.apiKey || options?.fallback?.apiKey,
     baseURL: agent.baseURL || options?.fallback?.baseURL,
@@ -2689,28 +2695,9 @@ const getWorkflowUrl = (path: string, baseUrl: string) => {
   return url.toString();
 };
 
-const getWorkflowClient = () => {
-  const token = process.env.QSTASH_TOKEN;
-  if (!token) throw new Error('QSTASH_TOKEN is required to trigger workflows');
-
-  const config: ConstructorParameters<typeof Client>[0] = { token };
-
-  if (process.env.QSTASH_URL) {
-    (config as Record<string, unknown>).url = process.env.QSTASH_URL;
-  }
-
-  return new Client(config);
-};
-
 export class MemoryExtractionWorkflowService {
-  private static client: Client;
-
   private static getClient() {
-    if (!this.client) {
-      this.client = getWorkflowClient();
-    }
-
-    return this.client;
+    return workflowClient;
   }
 
   static triggerProcessUsers(
@@ -2795,7 +2782,7 @@ export class MemoryExtractionWorkflowService {
       flowControl: {
         key: `memory-user-memory.pipelines.persona.update-write.${userId}`,
         parallelism: 1,
-      } satisfies FlowControl,
+      },
       headers: options?.extraHeaders,
       url,
     });

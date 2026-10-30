@@ -1,0 +1,7 @@
+FROM alpine:3.21.3
+# Connected preparation only. This layer is exported with the offline image.
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
+    apk add --no-cache iptables tcpdump
+COPY firewall.sh check.sh /policy/
+ENTRYPOINT ["/bin/sh", "/policy/firewall.sh"]

@@ -1,6 +1,5 @@
 import { expo } from '@better-auth/expo';
 import { passkey } from '@better-auth/passkey';
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { createNanoId, idGenerator, serverDB } from '@lobechat/database';
 import * as schema from '@lobechat/database/schemas';
 import bcrypt from 'bcryptjs';
@@ -10,11 +9,7 @@ import { type BetterAuthOptions } from 'better-auth/minimal';
 import { betterAuth } from 'better-auth/minimal';
 import { admin, emailOTP, genericOAuth, magicLink } from 'better-auth/plugins';
 import { type BetterAuthPlugin } from 'better-auth/types';
-import { emailHarmony } from 'better-auth-harmony';
-import { validateEmail } from 'better-auth-harmony/email';
-import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
-import { businessEmailValidator } from '@/business/server/better-auth';
 import { appEnv } from '@/envs/app';
 import { authEnv } from '@/envs/auth';
 import {
@@ -30,22 +25,6 @@ import { createSecondaryStorage, getTrustedOrigins } from '@/libs/better-auth/ut
 import { parseSSOProviders } from '@/libs/better-auth/utils/server';
 import { EmailService } from '@/server/services/email';
 import { UserService } from '@/server/services/user';
-
-// Configure HTTP proxy for OAuth provider requests in development (e.g., Google token exchange)
-// Node.js native fetch doesn't respect system proxy settings
-// Ref: https://github.com/better-auth/better-auth/issues/7396
-if (process.env.NODE_ENV === 'development') {
-  const proxyUrl =
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy ||
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy;
-
-  if (proxyUrl) {
-    const proxyAgent = new ProxyAgent(proxyUrl);
-    setGlobalDispatcher(proxyAgent);
-  }
-}
 
 // Email verification link expiration time (in seconds)
 // Default is 1 hour (3600 seconds) as per Better Auth documentation
@@ -83,10 +62,6 @@ const enableMagicLink = authEnv.AUTH_ENABLE_MAGIC_LINK;
 const enabledSSOProviders = parseSSOProviders(authEnv.AUTH_SSO_PROVIDERS);
 
 const { socialProviders, genericOAuthProviders } = initBetterAuthSSOProviders();
-
-async function customEmailValidator(email: string): Promise<boolean> {
-  return ENABLE_BUSINESS_FEATURES ? businessEmailValidator(email) : validateEmail(email);
-}
 
 interface CustomBetterAuthOptions {
   plugins: BetterAuthPlugin[];
@@ -264,7 +239,6 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
       ...customOptions.plugins,
       emailWhitelist(),
       expo(),
-      emailHarmony({ allowNormalizedSignin: false, validator: customEmailValidator }),
       admin(),
       // Email OTP plugin for mobile verification
       emailOTP({

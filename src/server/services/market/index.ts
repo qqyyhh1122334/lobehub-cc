@@ -1,14 +1,12 @@
 import { type LobeToolManifest } from '@lobechat/context-engine';
-import { MarketSDK } from '@lobehub/market-sdk';
+import { type MarketSDK } from '@lobehub/market-sdk';
 import debug from 'debug';
 import { type NextRequest } from 'next/server';
 
 import { type TrustedClientUserInfo } from '@/libs/trusted-client';
-import { generateTrustedClientToken, getTrustedClientTokenForSession } from '@/libs/trusted-client';
+import { createUnavailableClient, unavailable } from '@/server/intranet/services';
 
 const log = debug('lobe-server:market-service');
-
-const MARKET_BASE_URL = process.env.MARKET_BASE_URL || 'https://market.lobehub.com';
 
 // ============================== Helper Functions ==============================
 
@@ -80,28 +78,8 @@ export interface MarketServiceOptions {
 export class MarketService {
   market: MarketSDK;
 
-  constructor(options: MarketServiceOptions = {}) {
-    const { accessToken, userInfo, clientCredentials, trustedClientToken } = options;
-
-    // Use provided trustedClientToken or generate from userInfo
-    const resolvedTrustedClientToken =
-      trustedClientToken || (userInfo ? generateTrustedClientToken(userInfo) : undefined);
-
-    this.market = new MarketSDK({
-      accessToken,
-      baseURL: MARKET_BASE_URL,
-      clientId: clientCredentials?.clientId,
-      clientSecret: clientCredentials?.clientSecret,
-      trustedClientToken: resolvedTrustedClientToken,
-    });
-
-    log(
-      'MarketService initialized: baseURL=%s, hasAccessToken=%s, hasTrustedToken=%s, hasClientCredentials=%s',
-      MARKET_BASE_URL,
-      !!accessToken,
-      !!resolvedTrustedClientToken,
-      !!clientCredentials,
-    );
+  constructor(_options: MarketServiceOptions = {}) {
+    this.market = createUnavailableClient<MarketSDK>('Cloud marketplace');
   }
 
   // ============================== Factory Methods ==============================
@@ -110,14 +88,8 @@ export class MarketService {
    * Create MarketService from Next.js request (server-side only)
    * Extracts accessToken from Authorization header and trustedClientToken from session
    */
-  static async createFromRequest(req: NextRequest): Promise<MarketService> {
-    const accessToken = extractAccessToken(req);
-    const trustedClientToken = await getTrustedClientTokenForSession();
-
-    return new MarketService({
-      accessToken,
-      trustedClientToken,
-    });
+  static async createFromRequest(_req: NextRequest): Promise<MarketService> {
+    return new MarketService();
   }
 
   // ============================== Feedback Methods ==============================
@@ -190,19 +162,8 @@ export class MarketService {
   /**
    * Get user info with trusted client token (server-side)
    */
-  async getUserInfoWithTrustedClient() {
-    const userInfoUrl = `${MARKET_BASE_URL}/lobehub-oidc/userinfo`;
-    const response = await fetch(userInfoUrl, {
-      // @ts-ignore
-      headers: this.market.headers,
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to get user info');
-    }
-
-    return response.json();
+  async getUserInfoWithTrustedClient(): Promise<never> {
+    return unavailable('Cloud marketplace authentication');
   }
 
   /**
@@ -510,80 +471,8 @@ export class MarketService {
    * @returns Array of tool manifests for connected skills
    */
   async getLobehubSkillManifests(): Promise<LobeToolManifest[]> {
-    try {
-      // 1. Get user's connected skills
-      const { connections } = await this.market.connect.listConnections();
-      if (!connections || connections.length === 0) {
-        log('getLobehubSkillManifests: no connected skills found');
-        return [];
-      }
-
-      log('getLobehubSkillManifests: found %d connected skills', connections.length);
-
-      // 2. Fetch tools for each connection and build manifests
-      const manifests: LobeToolManifest[] = [];
-
-      for (const connection of connections) {
-        try {
-          // Connection returns providerId (e.g., 'twitter', 'linear'), not numeric id
-          const providerId = (connection as any).providerId;
-          if (!providerId) {
-            log('getLobehubSkillManifests: connection missing providerId: %O', connection);
-            continue;
-          }
-          const icon = (connection as any).icon;
-
-          // Look up the provider's display name from the static registry.
-          // connection.providerName is the *user's* display name on that provider,
-          // NOT the provider's own name (e.g., "LiJian" instead of "Linear").
-          // Static label map — avoids importing LOBEHUB_SKILL_PROVIDERS which
-          // pulls in react-icons (client-side only). Keep in sync with lobehubSkill.ts.
-          const PROVIDER_LABELS: Record<string, string> = {
-            github: 'GitHub',
-            linear: 'Linear',
-            microsoft: 'Outlook Calendar',
-            notion: 'Notion',
-            twitter: 'X (Twitter)',
-            vercel: 'Vercel',
-          };
-          const providerLabel = PROVIDER_LABELS[providerId] || providerId;
-
-          const { tools, instruction } = await this.market.skills.listTools(providerId);
-          if (!tools || tools.length === 0) continue;
-
-          const manifest: LobeToolManifest = {
-            api: tools.map((tool: any) => ({
-              description: tool.description || '',
-              name: tool.name,
-              parameters: tool.inputSchema || { properties: {}, type: 'object' },
-            })),
-            identifier: providerId,
-            meta: {
-              avatar: icon || '🔗',
-              description: `LobeHub Skill: ${providerLabel}`,
-              tags: ['lobehub-skill', providerId],
-              title: providerLabel,
-            },
-            systemRole: instruction || undefined,
-            type: 'builtin',
-          };
-
-          manifests.push(manifest);
-          log(
-            'getLobehubSkillManifests: built manifest for %s with %d tools',
-            providerId,
-            tools.length,
-          );
-        } catch (error) {
-          log('getLobehubSkillManifests: failed to fetch tools for connection: %O', error);
-        }
-      }
-
-      return manifests;
-    } catch (error) {
-      log('getLobehubSkillManifests: error fetching skills: %O', error);
-      return [];
-    }
+    // Local tools and locally installed MCP servers are resolved elsewhere.
+    return [];
   }
 
   // ============================== Creds Methods ==============================
@@ -602,50 +491,7 @@ export class MarketService {
     fileName: string;
     fileType: string;
   }): Promise<{ fileHashId: string; fileName: string; fileSize: number; fileType: string }> {
-    const { file, fileName, fileType } = params;
-
-    log('uploadCredFile: fileName=%s, fileType=%s', fileName, fileType);
-
-    // Convert base64 to Blob
-    const binaryString = atob(file);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const blob = new Blob([bytes], { type: fileType });
-
-    // Create FormData
-    const formData = new FormData();
-    formData.append('file', blob, fileName);
-
-    // Extract only auth headers (not Content-Type, which would break multipart/form-data)
-    // @ts-ignore - market.headers contains auth headers
-    const sdkHeaders = this.market.headers as Record<string, string>;
-    const authHeaders: Record<string, string> = {};
-    for (const [key, value] of Object.entries(sdkHeaders)) {
-      // Only include authorization-related headers, skip Content-Type
-      if (key.toLowerCase() !== 'content-type') {
-        authHeaders[key] = value;
-      }
-    }
-
-    // Call Market API directly
-    const uploadUrl = `${MARKET_BASE_URL}/api/v1/user/creds/upload`;
-    const response = await fetch(uploadUrl, {
-      body: formData,
-      headers: authHeaders,
-      method: 'POST',
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      log('uploadCredFile error: %O', errorData);
-      throw new Error(errorData.message || `Upload failed with status ${response.status}`);
-    }
-
-    const result = await response.json();
-    log('uploadCredFile success: fileHashId=%s', result.fileHashId);
-    return result;
+    return unavailable('Cloud credential storage');
   }
 
   // ============================== Direct SDK Access ==============================

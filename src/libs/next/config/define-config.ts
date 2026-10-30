@@ -1,8 +1,7 @@
+import { INTRANET_CSP } from '../../../security/intranet/browserPolicy';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
-import type { NextConfig } from 'next';
-import type { Header, Redirect } from 'next/dist/lib/load-custom-routes';
-
-const debugProxyRoutes = ['/_dangerous_local_dev_proxy', '/_dangerous_local_dev_proxy/:path*'];
+import { type NextConfig } from 'next';
+import { type Header, type Redirect } from 'next/dist/lib/load-custom-routes';
 
 interface CustomNextConfig {
   experimental?: NextConfig['experimental'];
@@ -18,8 +17,6 @@ export function defineConfig(config: CustomNextConfig) {
   const isProd = process.env.NODE_ENV === 'production';
   const buildWithDocker = process.env.DOCKER === 'true';
 
-  const shouldUseCSP = process.env.ENABLED_CSP === '1';
-
   const isTest =
     process.env.NODE_ENV === 'test' || process.env.TEST === '1' || process.env.E2E === '1';
 
@@ -30,18 +27,11 @@ export function defineConfig(config: CustomNextConfig) {
 
     outputFileTracingIncludes: {
       '*': [
-        'public/**/*',
-        '.next/static/**/*',
-
-        // Only needed for Docker standalone builds.
-        // On Vercel (serverless), including native bindings can easily exceed function size limits.
+        // Docker copies public and .next/static once after the server build.
+        // Repeating browser assets in every route trace duplicates unrelated
+        // files and unnecessarily expands the standalone dependency scan.
         ...(buildWithDocker
           ? [
-              // Exclude SPA/desktop/mobile build artifacts from serverless functions
-              'public/_spa/**',
-              'dist/desktop/**',
-              'dist/mobile/**',
-
               'packages/database/migrations/**',
 
               // Ensure native bindings are included in standalone output.
@@ -58,7 +48,7 @@ export function defineConfig(config: CustomNextConfig) {
     },
   };
 
-  const assetPrefix = process.env.NEXT_PUBLIC_ASSET_PREFIX;
+  const assetPrefix = undefined; // Browser assets must remain same-origin.
 
   const nextConfig: NextConfig = {
     ...(isStandaloneMode ? standaloneConfig : {}),
@@ -93,35 +83,20 @@ export function defineConfig(config: CustomNextConfig) {
         },
       ];
 
-      if (shouldUseCSP) {
-        securityHeaders.push(
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: "frame-ancestors 'none';",
-          },
-        );
-      }
+      securityHeaders.push(
+        { key: 'X-Frame-Options', value: 'DENY' },
+        { key: 'Content-Security-Policy', value: INTRANET_CSP },
+        { key: 'X-DNS-Prefetch-Control', value: 'off' },
+        { key: 'Referrer-Policy', value: 'no-referrer' },
+        { key: 'X-Content-Type-Options', value: 'nosniff' },
+        { key: 'Permissions-Policy', value: 'camera=(), geolocation=(), payment=()' },
+      );
 
       return [
         {
           headers: securityHeaders,
           source: '/:path*',
         },
-        ...debugProxyRoutes.map((source) => ({
-          headers: [
-            {
-              key: 'Cache-Control',
-              value: 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-            },
-            { key: 'Pragma', value: 'no-cache' },
-            { key: 'Expires', value: '0' },
-          ],
-          source,
-        })),
         {
           headers: [
             {
@@ -141,10 +116,6 @@ export function defineConfig(config: CustomNextConfig) {
               key: 'CDN-Cache-Control',
               value: 'public, max-age=31536000, immutable',
             },
-            {
-              key: 'Vercel-CDN-Cache-Control',
-              value: 'public, max-age=31536000, immutable',
-            },
           ],
           source: '/images/(.*).(png|jpe?g|gif|svg|ico|webp)',
         },
@@ -156,10 +127,6 @@ export function defineConfig(config: CustomNextConfig) {
             },
             {
               key: 'CDN-Cache-Control',
-              value: 'public, max-age=31536000, immutable',
-            },
-            {
-              key: 'Vercel-CDN-Cache-Control',
               value: 'public, max-age=31536000, immutable',
             },
           ],
@@ -175,10 +142,6 @@ export function defineConfig(config: CustomNextConfig) {
               key: 'CDN-Cache-Control',
               value: 'public, max-age=31536000, immutable',
             },
-            {
-              key: 'Vercel-CDN-Cache-Control',
-              value: 'public, max-age=31536000, immutable',
-            },
           ],
           source: '/screenshots/(.*).(png|jpe?g|gif|svg|ico|webp)',
         },
@@ -190,10 +153,6 @@ export function defineConfig(config: CustomNextConfig) {
             },
             {
               key: 'CDN-Cache-Control',
-              value: 'public, max-age=31536000, immutable',
-            },
-            {
-              key: 'Vercel-CDN-Cache-Control',
               value: 'public, max-age=31536000, immutable',
             },
           ],
@@ -362,11 +321,6 @@ export function defineConfig(config: CustomNextConfig) {
       },
       ...(config.redirects ?? []),
     ],
-    rewrites: async () =>
-      debugProxyRoutes.map((source) => ({
-        destination: '/_dangerous_local_dev_proxy.html',
-        source,
-      })),
     // when external packages in dev mode with turbopack, this config will lead to bundle error
     // @napi-rs/canvas is a native module that can't be bundled by Turbopack
     // pdfjs-dist uses @napi-rs/canvas for DOMMatrix polyfill in Node.js environment
@@ -375,13 +329,18 @@ export function defineConfig(config: CustomNextConfig) {
       '@napi-rs/canvas',
       '@lobehub/editor',
       'discord.js',
-      'ffmpeg-static',
       'pdfjs-dist',
       'ajv',
       'oidc-provider',
     ],
 
-    transpilePackages: ['mermaid', 'better-auth-harmony'],
+    transpilePackages: ['mermaid'],
+    webpack(webpackConfig) {
+      // Agent bootstrap documents are imported as source strings. Keep this
+      // equivalent to the Turbopack Markdown rule below.
+      webpackConfig.module.rules.push({ test: /\.md$/, type: 'asset/source' });
+      return webpackConfig;
+    },
     turbopack: {
       rules: {
         ...(isTest
@@ -399,7 +358,8 @@ export function defineConfig(config: CustomNextConfig) {
     },
 
     typescript: {
-      ignoreBuildErrors: true,
+      ignoreBuildErrors: false,
+      tsconfigPath: 'tsconfig.intranet.json',
     },
   };
 

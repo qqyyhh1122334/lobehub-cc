@@ -152,6 +152,11 @@ const currentAgentTTS = (s: AgentStoreState): LobeAgentTTSConfig => {
   return config?.tts || DEFAUTT_AGENT_TTS_CONFIG;
 };
 
+const defaultVoice = (options: typeof VoiceList.openaiVoiceOptions): string | undefined => {
+  const option = options?.find((item) => 'value' in item);
+  return option && 'value' in option && typeof option.value === 'string' ? option.value : undefined;
+};
+
 const currentAgentTTSVoice =
   (lang: string) =>
   (s: AgentStoreState): string => {
@@ -160,15 +165,15 @@ const currentAgentTTSVoice =
     let currentVoice;
     switch (ttsService) {
       case 'openai': {
-        currentVoice = voice.openai || (VoiceList.openaiVoiceOptions?.[0].value as string);
+        currentVoice = voice.openai || defaultVoice(VoiceList.openaiVoiceOptions);
         break;
       }
       case 'edge': {
-        currentVoice = voice.edge || (voiceList.edgeVoiceOptions?.[0].value as string);
+        currentVoice = voice.edge || defaultVoice(voiceList.edgeVoiceOptions);
         break;
       }
       case 'microsoft': {
-        currentVoice = voice.microsoft || (voiceList.microsoftVoiceOptions?.[0].value as string);
+        currentVoice = voice.microsoft || defaultVoice(voiceList.microsoftVoiceOptions);
         break;
       }
     }

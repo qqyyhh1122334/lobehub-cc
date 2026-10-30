@@ -1,4 +1,4 @@
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { type DeploymentOption, type SystemDependency } from '@lobehub/market-sdk';
@@ -8,7 +8,11 @@ import { type SystemDependencyCheckResult } from '@/types/plugins';
 
 import { type InstallationChecker } from './types';
 
-const execPromise = promisify(exec);
+const execFilePromise = promisify(execFile);
+// Never execute registry-provided shell code. Corepack shims (pnpm/yarn) are
+// excluded because even --version may download a missing package manager.
+const SAFE_VERSION_COMMAND =
+  /^(node|npm|python(?:3(?:\.\d+)?)?|uv|git|docker|java|ffmpeg) (--version|-version)$/;
 const log = debug('lobe-mcp:deps-check');
 
 // Helper function to get current platform install instructions
@@ -62,9 +66,16 @@ class MCPSystemDepsCheckService {
     try {
       // If check command not provided, use generic command
       const checkCommand = dependency.checkCommand || `${dependency.name} --version`;
+      const command = SAFE_VERSION_COMMAND.exec(checkCommand);
+      if (!command) {
+        throw new Error('Only local runtime version checks are supported in the intranet build');
+      }
       log(`Checking system dependency: ${dependency.name}, command: ${checkCommand}`);
 
-      const { stdout, stderr } = await execPromise(checkCommand);
+      const { stdout, stderr } = await execFilePromise(command[1], [command[2]], {
+        maxBuffer: 1024 * 1024,
+        timeout: 10_000,
+      });
       if (stderr && !stdout) {
         return {
           error: stderr,

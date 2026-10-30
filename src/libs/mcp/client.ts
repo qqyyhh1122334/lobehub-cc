@@ -1,10 +1,4 @@
-import { spawn } from 'node:child_process';
-
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import {
-  getDefaultEnvironment,
-  StdioClientTransport,
-} from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { type Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { type Progress } from '@modelcontextprotocol/sdk/types.js';
@@ -12,7 +6,6 @@ import debug from 'debug';
 
 import {
   type MCPClientParams,
-  type MCPError,
   type McpPrompt,
   type McpResource,
   type McpTool,
@@ -27,132 +20,6 @@ const MCP_TOOL_TIMEOUT = (() => {
   const val = Number(process.env.MCP_TOOL_TIMEOUT);
   return Number.isFinite(val) && val > 0 ? val : 60_000;
 })();
-
-/**
- * Pre-check stdio command to capture detailed error information
- */
-async function preCheckStdioCommand(params: {
-  args: string[];
-  command: string;
-  env?: Record<string, string>;
-}): Promise<{
-  error?: MCPError;
-  success: boolean;
-}> {
-  return new Promise((resolve) => {
-    log('Pre-checking stdio command: %s with args: %O', params.command, params.args);
-
-    const child = spawn(params.command, params.args, {
-      env: {
-        ...process.env,
-        ...getDefaultEnvironment(),
-        ...params.env,
-      },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-    let resolved = false;
-
-    // Set timeout (5 seconds)
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        child.kill('SIGTERM');
-        resolve({
-          error: createMCPError('INITIALIZATION_TIMEOUT', 'MCP service initialization timeout', {
-            errorLog: stderr || 'No stderr output',
-            params: {
-              args: params.args,
-              command: params.command,
-            },
-            step: 'precheck_timeout',
-          }),
-          success: false,
-        });
-      }
-    }, 5000);
-
-    // Collect stdout
-    child.stdout?.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    // Collect stderr - this is the critical part
-    child.stderr?.on('data', (data) => {
-      stderr += data.toString();
-      log('Captured stderr: %s', data.toString());
-    });
-
-    child.on('error', (error) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        log('Process spawn error: %O', error);
-        resolve({
-          error: createMCPError('PROCESS_SPAWN_ERROR', 'Failed to start MCP service process', {
-            originalError: error.message,
-            params: {
-              args: params.args,
-              command: params.command,
-            },
-            step: 'process_spawn',
-          }),
-          success: false,
-        });
-      }
-    });
-
-    child.on('exit', (code, signal) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-
-        if (code === 0) {
-          log('Pre-check successful, stdout: %s', stdout);
-          resolve({ success: true });
-        } else {
-          log('Pre-check failed with code: %d, stderr: %s', code, stderr);
-          resolve({
-            error: createMCPError('CONNECTION_FAILED', 'MCP service startup failed', {
-              errorLog: stderr,
-              params: {
-                args: params.args,
-                command: params.command,
-              },
-              process: {
-                exitCode: code || undefined,
-                signal: signal || undefined,
-              },
-              step: 'process_exit',
-            }),
-            success: false,
-          });
-        }
-      }
-    });
-
-    // Send a simple JSON-RPC initialization message to test the connection
-    try {
-      const initMessage =
-        JSON.stringify({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            clientInfo: { name: 'lobe-mcp-precheck', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        }) + '\n';
-
-      child.stdin?.write(initMessage);
-      child.stdin?.end();
-    } catch (writeError) {
-      log('Failed to write to stdin: %O', writeError);
-    }
-  });
-}
 
 export class MCPClient {
   private mcp: Client;
@@ -206,17 +73,11 @@ export class MCPClient {
       }
 
       case 'stdio': {
-        log('Using Stdio transport with command: %s , args: %O', params.command, params.args);
-
-        this.transport = new StdioClientTransport({
-          args: params.args,
-          command: params.command,
-          env: {
-            ...getDefaultEnvironment(),
-            ...params.env,
-          },
-        });
-        break;
+        throw createMCPError(
+          'VALIDATION_ERROR',
+          'Local subprocess MCP is disabled in the intranet web build. Use an approved internal HTTP MCP endpoint.',
+          { step: 'intranet_transport_policy' },
+        );
       }
 
       default: {
@@ -248,22 +109,6 @@ export class MCPClient {
           throw createMCPError('AUTHORIZATION_ERROR', error.message);
 
         throw e;
-      }
-
-      // For stdio connection failure, attempt to pre-check command to get detailed error information
-      if (this.params.type === 'stdio') {
-        log('Attempting to pre-check stdio command for detailed error information...');
-
-        const preCheckResult = await preCheckStdioCommand({
-          args: this.params.args,
-          command: this.params.command,
-          env: this.params.env,
-        });
-
-        if (!preCheckResult.success && preCheckResult.error) {
-          log('Detailed error captured: %O', preCheckResult.error);
-          throw preCheckResult.error;
-        }
       }
 
       // For other connection types or when pre-check doesn't provide more information

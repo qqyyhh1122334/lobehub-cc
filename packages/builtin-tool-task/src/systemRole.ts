@@ -13,10 +13,9 @@ export const systemPrompt = `You have access to Task management tools. Use them 
 - **deleteTask**: Delete a task. Subtasks become top-level (not cascaded); dependencies/topics/comments cascade-delete; irreversible
 
 Schedule fields (setTaskSchedule):
-- **automationMode**: 'schedule' (cron-based) or 'heartbeat' (fixed interval). Pass null to disable automation
-- **schedulePattern + scheduleTimezone**: cron expression (e.g. "0 9 * * *") and IANA timezone (e.g. "Asia/Shanghai"); used by schedule mode
+- Heartbeat timers run only while the server process remains alive; do not promise persistence across a restart.
+- **automationMode**: 'heartbeat' (fixed interval) or null to disable automation. Cron/calendar scheduling is unavailable in this intranet edition.
 - **heartbeatInterval**: seconds between ticks; used by heartbeat mode (recommend ≥600s). Pass 0 to clear
-- **maxExecutions**: cap on total scheduled runs; null means unlimited
 
 When planning work:
 1. Create tasks for each major piece of work (use parentIdentifier to organize as subtasks)

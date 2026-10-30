@@ -1,10 +1,7 @@
-import type { ModelPerformance, ModelUsage, TracePayload } from '@lobechat/types';
+import type { ComfyUIKeyVault, ModelPerformance, ModelUsage, TracePayload } from '@lobechat/types';
 import { createTimingHelpers, getDurationMs } from '@lobechat/utils';
 import type { ClientOptions } from 'openai';
 
-import type { LobeBedrockAIParams } from '../providers/bedrock';
-import type { LobeCloudflareParams } from '../providers/cloudflare';
-import { LobeOpenAI } from '../providers/openai';
 import { providerRuntimeMap } from '../runtimeMap';
 import type {
   ChatCompletionErrorPayload,
@@ -481,8 +478,7 @@ export class ModelRuntime {
     provider: string,
     params: Partial<
       ClientOptions &
-        LobeBedrockAIParams &
-        LobeCloudflareParams & {
+        ComfyUIKeyVault & {
           apiKey?: string;
           baseURL?: string;
           userId?: string;
@@ -490,8 +486,26 @@ export class ModelRuntime {
     >,
     hooks?: ModelRuntimeHooks,
   ) {
-    // @ts-expect-error runtime map not include vertex so it will be undefined
-    const providerAI = providerRuntimeMap[provider] ?? LobeOpenAI;
+    if (!Object.hasOwn(providerRuntimeMap, provider)) {
+      throw new Error(`Model adapter ${provider} is unavailable in the intranet edition`);
+    }
+    if (!params.baseURL) {
+      throw new Error(`An explicit internal baseURL is required for ${provider}`);
+    }
+    const endpoint = new URL(params.baseURL);
+    if (
+      !['http:', 'https:'].includes(endpoint.protocol) ||
+      endpoint.username ||
+      endpoint.password ||
+      endpoint.search ||
+      endpoint.hash
+    ) {
+      throw new Error(
+        'Model endpoint must be an HTTP(S) URL without credentials, query, or fragment',
+      );
+    }
+    // Socket/DNS policy revalidates the actual destination before any connection.
+    const providerAI = providerRuntimeMap[provider as keyof typeof providerRuntimeMap];
 
     const runtimeModel: LobeRuntimeAI = new providerAI(params);
 

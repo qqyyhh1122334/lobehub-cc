@@ -1,106 +1,75 @@
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+// @vitest-environment node
+import childProcess from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MCPClient } from '../index';
 
-const require = createRequire(import.meta.url);
-const mcpHelloWorldRoot = dirname(require.resolve('mcp-hello-world/package.json'));
-/** Local stdio entry (see mcp-hello-world `bin`); avoids `npx` so npm never reads this repo's overrides. */
-const mcpHelloWorldStdio = join(mcpHelloWorldRoot, 'build', 'stdio.js');
+describe('MCPClient intranet transport policy', () => {
+  afterEach(() => vi.restoreAllMocks());
 
-describe('MCPClient', () => {
-  // --- Updated Stdio Transport tests ---
-  describe('Stdio Transport', () => {
-    let mcpClient: MCPClient;
-    const TIMEOUT = 120_000;
-    const stdioConnection = {
-      id: 'mcp-hello-world',
-      name: 'Stdio SDK Test Connection',
-      type: 'stdio' as const,
-      command: process.execPath,
-      args: [mcpHelloWorldStdio],
-    };
+  it.each(['npx', 'uvx', 'curl', process.execPath])(
+    'rejects stdio command %s before launching any process',
+    (command) => {
+      const spawn = vi.spyOn(childProcess, 'spawn');
+      expect(
+        () => new MCPClient({ name: 'untrusted', type: 'stdio', command, args: ['--version'] }),
+      ).toThrow('Local subprocess MCP is disabled');
+      expect(spawn).not.toHaveBeenCalled();
+    },
+  );
 
-    beforeEach(async () => {
-      // args are now set directly in the connection object
-      mcpClient = new MCPClient(stdioConnection);
-      // Initialize the client - this starts the stdio process
-      await mcpClient.initialize();
-      // Add a small delay to allow the server process to fully start (optional, but can help)
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }, TIMEOUT);
-
-    afterEach(async () => {
-      // Assume SDK client/transport handles process termination gracefully
-      // If processes leak, more explicit cleanup might be needed here
-    }, TIMEOUT);
-
-    it(
-      'should create and initialize an instance with stdio transport',
-      () => {
-        expect(mcpClient).toBeInstanceOf(MCPClient);
-      },
-      TIMEOUT,
-    );
-
-    it(
-      'should list tools via stdio',
-      async () => {
-        const result = await mcpClient.listTools();
-
-        // Check exact length if no other tools are expected
-        expect(result).toHaveLength(3);
-
-        // Expect the tools defined in mock-sdk-server.ts
-        expect(result).toMatchSnapshot();
-      },
-      TIMEOUT,
-    );
-
-    it(
-      'should call the "echo" tool via stdio',
-      async () => {
-        const toolName = 'echo';
-        const toolArgs = { message: 'hello stdio' };
-        // Expect the result format defined in mock-sdk-server.ts
-        const expectedResult = {
-          content: [{ type: 'text', text: 'You said: hello stdio' }],
-        };
-
-        const result = await mcpClient.callTool(toolName, toolArgs);
-        expect(result).toEqual(expectedResult);
-      },
-      TIMEOUT,
-    );
-
-    it(
-      'should call the "add" tool via stdio',
-      async () => {
-        const toolName = 'add';
-        const toolArgs = { a: 5, b: 7 };
-
-        const result = await mcpClient.callTool(toolName, toolArgs);
-        expect(result).toEqual({
-          content: [{ type: 'text', text: 'The sum is: 12' }],
-        });
-      },
-      TIMEOUT,
-    );
+  it('still constructs an internal HTTP MCP client', () => {
+    expect(
+      new MCPClient({ name: 'internal', type: 'http', url: 'http://127.0.0.1:9000/mcp' }),
+    ).toBeInstanceOf(MCPClient);
   });
 
-  // Error Handling tests remain the same...
-  describe('Error Handling', () => {
-    it('should throw error for unsupported connection type', () => {
-      const connection = {
-        id: 'invalid-test',
-        name: 'Invalid Test Connection',
-        type: 'invalid' as any,
-      };
-      expect(() => new MCPClient(connection as any)).toThrow(
-        'Unsupported MCP connection type: invalid',
-      );
+  it('initializes, lists and calls a tool on a real internal HTTP MCP server', async () => {
+    const service = new McpServer({ name: 'intranet-test', version: '1.0.0' });
+    service.registerTool('internal_status', {}, async () => ({
+      content: [{ type: 'text', text: 'intranet tool works' }],
+    }));
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: randomUUID });
+    await service.connect(transport);
+    const server = createServer((request, response) => {
+      void transport.handleRequest(request, response).catch(() => {
+        if (!response.headersSent) response.writeHead(500);
+        response.end();
+      });
     });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No local MCP listener');
+    const client = new MCPClient({
+      name: 'internal',
+      type: 'http',
+      url: `http://127.0.0.1:${address.port}/mcp`,
+    });
+    try {
+      await client.initialize();
+      expect((await client.listTools()).map((tool) => tool.name)).toContain('internal_status');
+      expect((await client.callTool('internal_status', {})).content).toEqual([
+        { type: 'text', text: 'intranet tool works' },
+      ]);
+    } finally {
+      await client.disconnect();
+      await service.close();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it('rejects unsupported connection types', () => {
+    expect(() => new MCPClient({ name: 'invalid', type: 'invalid' } as any)).toThrow(
+      'Unsupported MCP connection type: invalid',
+    );
   });
 });

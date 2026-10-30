@@ -22,23 +22,15 @@ const genUserLLMConfig = (specificConfig: Record<any, any>): UserModelProviderCo
   }, {} as UserModelProviderConfig);
 };
 
+// Never enable browser-side inference or public model defaults in this web build.
 export const DEFAULT_LLM_CONFIG = genUserLLMConfig({
-  anthropic: {
-    enabled: true,
-  },
-  deepseek: {
-    enabled: true,
-  },
-  google: {
-    enabled: true,
-  },
-  lmstudio: {
-    fetchOnClient: true,
-  },
   ollama: {
-    fetchOnClient: true,
-  },
-  openai: {
     enabled: true,
+    fetchOnClient: false,
   },
+  lmstudio: { fetchOnClient: false },
+  openai: { fetchOnClient: false },
+  vllm: { fetchOnClient: false },
+  xinference: { fetchOnClient: false },
+  comfyui: { fetchOnClient: false },
 });

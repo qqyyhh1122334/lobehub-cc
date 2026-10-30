@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
+
 import debug from 'debug';
 import type { MiddlewareHandler } from 'hono';
 
@@ -23,7 +25,11 @@ export const bearerSecretAuth =
     }
 
     const authHeader = c.req.header('authorization');
-    if (authHeader !== `Bearer ${secret}`) {
+    const actual = createHash('sha256')
+      .update(authHeader || '')
+      .digest();
+    const expected = createHash('sha256').update(`Bearer ${secret}`).digest();
+    if (!timingSafeEqual(actual, expected)) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
 

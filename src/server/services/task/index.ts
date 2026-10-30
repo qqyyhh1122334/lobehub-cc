@@ -19,6 +19,8 @@ import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
 import type { LobeChatDatabase } from '@/database/type';
 
+import { assertTaskAutomationAvailable } from '@/libs/intranet/taskPolicy';
+
 import { AiAgentService } from '../aiAgent';
 import { BriefService } from '../brief';
 import { type SubtaskGraphPlan, TaskGraphService } from '../taskGraph';
@@ -88,6 +90,7 @@ export class TaskService {
    * default model don't silently affect this task.
    */
   async createTask(input: CreateTaskInput): Promise<TaskItem> {
+    assertTaskAutomationAvailable(input);
     await this.assertAssigneeAgentBelongsToUser(input.assigneeAgentId);
 
     const createData: CreateTaskInput & { config?: Record<string, unknown> } = { ...input };
@@ -224,6 +227,7 @@ export class TaskService {
     }
 
     const resolved = await this.resolveOrThrow(id);
+    if (status === 'scheduled' || status === 'running') assertTaskAutomationAvailable(resolved);
 
     if (resolved.status === 'running' && status !== 'running') {
       const topics = await this.taskTopicModel.findByTaskId(resolved.id);

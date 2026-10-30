@@ -1,0 +1,1266 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -40,6 +40,9 @@
+ COPY --from=build --chown=node:node /app/scripts/intranet /app/scripts/intranet
+ COPY --from=build --chown=node:node /app/deploy/intranet/start.cjs /app/start.cjs
+ COPY --from=build --chown=node:node /app/deploy/intranet/validate-env.cjs /app/validate-env.cjs
++COPY --from=build --chown=node:node /app/deploy/intranet/migration-check.cjs /app/migration-check.cjs
++COPY --from=build --chown=node:node /app/deploy/intranet/probe-deadline.cjs /app/probe-deadline.cjs
++COPY --from=build --chown=node:node /app/deploy/intranet/sse-check.cjs /app/sse-check.cjs
+ USER node
+ EXPOSE 3210
+ ENTRYPOINT ["node", "/app/start.cjs"]
+--- a/Dockerfile.intranet
++++ b/Dockerfile.intranet
+@@ -40,6 +40,9 @@
+ COPY --from=build --chown=node:node /app/scripts/intranet /app/scripts/intranet
+ COPY --from=build --chown=node:node /app/deploy/intranet/start.cjs /app/start.cjs
+ COPY --from=build --chown=node:node /app/deploy/intranet/validate-env.cjs /app/validate-env.cjs
++COPY --from=build --chown=node:node /app/deploy/intranet/migration-check.cjs /app/migration-check.cjs
++COPY --from=build --chown=node:node /app/deploy/intranet/probe-deadline.cjs /app/probe-deadline.cjs
++COPY --from=build --chown=node:node /app/deploy/intranet/sse-check.cjs /app/sse-check.cjs
+ USER node
+ EXPOSE 3210
+ ENTRYPOINT ["node", "/app/start.cjs"]
+--- a/INTRANET-RELEASE.md
++++ b/INTRANET-RELEASE.md
+@@ -34,9 +34,19 @@
+ 
+ 所有常用构建入口使用同一个 launcher，串行编译桌面/移动 SPA、复制本地资源、编译 Next 服务端。构建子进程预加载守卫、端点白名单为空。Docker 中编译额外使用 `RUN --network=none`。默认使用 Webpack、限制并发，严格检查类型；没有设置 `ignoreBuildErrors: true`。
+ 
+-## 实际验证
++## 当前检查点（2026-10-30，北京时间）
+ 
+-以下为本次实际执行的结果。定向测试不等同于整个上游测试集；模拟服务不等同于真实数据库/模型部署验收。
++本次连续执行已补齐 HTTP/2 CONNECT 拒绝，修复验收命令/数据库无超时，以及截断 SSE 被误判通过的问题。模型流必须具备正确 MIME、有效文本和 `finished` 终止事件，清理完成后才输出成功。两份 Dockerfile 已包含新增探针辅助文件，需重建镜像。
++
++当前源码在恢复的归档上继续修改，没有恢复原 Git 对象，也没有产生新的 Git 提交。精确版本由 `RELEASE.json`、累计补丁和文件 SHA256 清单标识，固定上游基线不变。
++
++本轮三个互不重叠的 Node 测试组分别为 74/74、48/48、26 通过与 2 跳过，另有 10/10 Python 配置检查通过。锁定的真实 Drizzle 已读取全部 105 项迁移；真实 Drizzle/pg 的 15 个依赖上下文在隔离目录打包加载通过，数据库结果仍为测试数据，不是实际迁移验收。两项跳过涉及缺失的 undici 和 ioredis。完整证据见 `verification/continuous-20261030/`。
++
++固定 pnpm 10.33.0 的依赖恢复在 registry 下载返回 403 后停止，锁文件未改变。生产构建入口因缺少 Vite 退出 1，独立应用运行包因缺少构建产物退出 1；不能将下表历史构建结果计为新版构建通过。当前还缺少 Docker/NET_ADMIN、模型、证书和真实部署配置，完整容器、登录/模型/S3、内核防火墙与抓包仍未执行。每 4 小时调度已暂停，本轮直接连续执行到这些环境阻塞。
++
++## 初始交付验证（2026-10-29，源码 2c6b8e3）
++
++以下为初始交付实际执行的历史结果。定向测试不等同于整个上游测试集；模拟服务不等同于真实数据库/模型部署验收，也不代表本检查点已经重跑这些构建与浏览器检查。
+ 
+ | 检查                    | 实际结果                                                                                           | 边界                                                                        |
+ | ----------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+--- a/deploy/intranet/DEPLOYMENT-VERIFICATION.md
++++ b/deploy/intranet/DEPLOYMENT-VERIFICATION.md
+@@ -1,6 +1,18 @@
+ # 部署验证记录
+ 
+ 本文件仅记录实际已运行的部署相关检查，不能据此宣称完整系统已经无问题。
++
++## 2026-10-29 后续验收脚本修复
++
++22 时检查进一步要求 tcpdump 的 captured、received-by-filter、dropped-by-kernel 统计完整且唯一，内核丢包必须为 0；缺失、格式异常、重复、数值溢出均失败。等待子进程 `close` 而非只等待 `exit`，以读取完整 stderr 尾部统计；抓包设置 `LC_ALL=C`，验收报告保存计数。正常退出和空 pcap 本身不再作为完整抓包的充分依据。
++
++本轮实际执行上述 Node 定向命令：24 项通过（13 项抓包生命周期/统计测试、11 项部署测试），0 失败、0 跳过，语法及 `git diff --check` 通过。测试使用真实 Node 子进程及 tcpdump 格式的测试数据，没有运行真正 tcpdump 或 Docker。仅验收工具改动，未重跑应用构建或未受影响的 Python 配置测试。下述 19 项结果为前一轮记录。
++
++修复 `accept.mjs` 对抓包进程退出状态未校验、停止等待无上限的问题。现在从启动时监视进程，要求就绪提示、探测窗口内持续存活、主动停止后退出码为 0；提前结束、非零退出、信号终止或超时均使验收失败。就绪提示跨 stderr 数据块也可识别。此变更不放宽网络策略。
++
++本轮实际执行 `node --test --test-concurrency=1 deploy/intranet/capture-process.test.cjs deploy/intranet/deployment.test.cjs`：19 项通过（8 项新进程生命周期测试、11 项既有部署测试），0 跳过；`python3 deploy/intranet/test_manifest.py`：10 项通过。新测试使用真实 Node 子进程模拟抓包进程生命周期，不是实际 tcpdump 或内核抓包验证。首次并发测试中 1 秒启动窗口超时，增加测试启动等待并顺序运行后通过；原失败日志保留在检查点中。
++
++本轮应用源码未改动，未重复执行应用构建。环境仍无 Docker CLI/daemon，进程有效 capabilities 为 0；真实全栈与内核防火墙验收继续待完成。此前构建及浏览器证据仍对应原交付提交，不冒充本轮重跑。
+ 
+ ## 本次环境实际完成
+ 
+@@ -24,3 +36,46 @@
+ 目标 Linux Docker 主机执行 `node deploy/intranet/accept.mjs <manifest.json>` 是发布门槛。需要它输出 `status: passed` 的真实报告，以及浏览器业务回归通过，才能接受这套部署。报告以当时镜像 ID、配置和网络为边界，不能推广为永远没有任何缺陷。
+ 
+ 中文 PDF 导出所需 CJK 字体未附带，需管理员提供本地字体后单独验收。Node 构建入口已统一预加载防护，Docker 编译步骤还使用 `--network=none`；本次部署验证没有实际执行这一步，不能据此宣称完整镜像构建已经通过。
++
++## 2026-10-30 测试资源清理修复
++
++原先 S3 对象删除或会话登出失败会中止后续测试账号清理。现将对象删除、客户端关闭、会话登出、准确用户删除分别尝试，汇总失败阶段；无登录 cookie 时仍以新建用户 ID + 邮箱删除，依赖已有账户/会话级联约束，不再为清理重试登录。未知用户 ID 或注册失败绝不退化成按邮箱删除。S3 删除有15秒中止信号，清理数据库连接/语句设置超时。
++
++本轮执行完整 probe-app.cjs 的受控服务失败测试7项，加上抓包生命周期/统计测试13项，共20项通过，无失败或跳过；Node语法检查通过。服务以测试替身提供，未运行真实 PostgreSQL、S3、认证或Docker。数据库迁移完整性校验仍待后续处理。
++
++临时工作目录已丢失，本轮从校验通过的初始源码包和22时累计补丁恢复至 e5a3f95ba1 对应内容；原Git对象、node_modules与构建缓存未恢复。新改动以补丁及文件哈希识别，不声称产生了可追溯上游历史的新Git提交。未重跑生产构建。
++
++## 2026-10-30 06时迁移完整性校验
++
++将“迁移记录数大于零”替换为镜像内完整迁移清单核对。使用实际 Drizzle 的 readMigrationFiles 读取 /app/migrations 并计算哈希，逐项比较数据库记录的数量、时间戳、SQL 哈希；部分迁移、额外迁移、同数量但内容不同、重复时间戳和无效清单均拒绝。验收报告包含迁移数量、末项时间戳与哈希校验状态。当前源码清单为105项；读取清单并不代表已执行迁移。
++
++两个 Dockerfile 同步复制校验器到 /app/migration-check.cjs，因此需重建镜像后执行新版验收，旧镜像缺文件会失败，不回退到宽松检查。
++
++本轮28项Node定向测试通过（迁移检查8项、清理7项、抓包13项），10项Python部署配置测试通过，Node语法检查通过。迁移测试注入清单和数据库结果验证校验逻辑；当前无node_modules、Docker或真实数据库，未执行锁定Drizzle库读取、实际迁移、容器构建或全栈验收。原Git对象仍未恢复，以累计补丁及文件SHA256识别本轮版本。
++
++## 2026-10-30 连续执行检查点（北京时间 09:46 起）
++
++应用户要求暂停每 4 小时调度，在当前会话连续开发、修复和验证，没有创建重复自动化。
++
++修复三项已复现问题：
++
++- HTTP/2 `session.request` 原先未拒绝 CONNECT，现快照校验对象和原始数组头，拒绝大小写变体及扩展 CONNECT；真实本地服务器收到禁止 CONNECT 为 0 次，正常 HTTP/2 请求继续成功。没有发起公网连接；不将此问题描述为已经证实的默认 Compose 内核逃逸。
++- 数据库迁移查询和宿主 Docker 命令原先无时限，现分阶段设置超时；容器内探针另有独立硬截止。超时失败明确记录终止/清理是否未确认，不会伪装通过。
++- SSE 原先只需一段文本就能通过，截断回复也被接受；现在增量校验 MIME、UTF-8、文本与唯一 finished 事件，拒绝错误、截断、重复终止及超大响应。成功 JSON 延后到全部清理完成。
++
++已执行检查（源码及证据校验值见本检查点 RELEASE 与 evidence 清单）：
++
++| 命令/范围 | 实际结果 | 边界 |
++| --- | --- | --- |
++| 抓包进程、命令时限、SSE、清理、迁移、打包、部署、浏览器 guard 和独立解析的 10 个 Node 文件 | 74 通过，0 失败/跳过 | 本地子进程、流/服务测试数据及真实 Drizzle 读取；无容器全栈 |
++| SaaS、队列、本地服务、禁在线拉模型、桌面边界、子进程策略 6 个 Node 文件 | 48 通过，0 失败/跳过 | 实际源码模块；服务替身仅在测试明确说明处使用 |
++| network-guard + source-audit | 26 通过，0 失败，2 跳过 | 用缓存锁定 pg 运行本地协议测试；缺 undici/ioredis 的检查未执行 |
++| Python 部署配置 | 10 通过 | YAML/脚本配置检查，未加载真实内核规则 |
++| Drizzle 0.45.4 真实 reader | 105 项读取成功；SQL 改动/缺失拒绝 | tarball 完整性与锁文件一致；未执行 SQL |
++| 真实 Drizzle/pg 隔离打包 | 15 个依赖上下文、105 项迁移清单加载成功，exit 0 | 专门的最小运行包与数据库行测试数据，不是完整应用/S3运行包 |
++
++上述三组 Node 文件互不重叠，共 148 通过、2 跳过；早期 23 项和 13 项定向结果已包含其中，不额外相加。网络测试此前无 pg 时为 25 通过/3 跳过，缓存 pg 可用后重跑得到表中最终结果。原始日志均保留。
++
++依赖恢复使用 Node 24.22.1、严格固定 pnpm 10.33.0、frozen-lockfile、ignore-scripts；完整锁文件 SHA256 始终为 `964fcace97c53ecd1e61c235c1a7ce9ab75a5f7a855389034b264f4ac34b9ed5`。下载 `mdast-util-to-markdown@2.2.1` 返回 403，执行会话报告网络审批取消；停止后没有重试、换域或修改网络策略。已导入部分包不代表安装完成。生产构建命令在检查前置条件时 exit 1（Vite 缺失），完整 standalone 检查 exit 1（server.js 缺失）。本轮未进入应用生产编译和严格类型检查，未运行真实 Chromium。
++
++环境核对确认无 Docker/Podman CLI、无 Docker socket、CapEff=0、无模型、证书及部署 `.env`。真实镜像构建、数据库迁移、登录后模型/S3链路、IPv4/IPv6防火墙、绕过 guard 的原始探测和 tcpdump 均未运行。下一步必须先恢复完整固定依赖，并取得具备这些条件的已授权部署环境；现有源码默认拒绝策略没有因环境阻塞而放宽。
+--- a/deploy/intranet/README.md
++++ b/deploy/intranet/README.md
+@@ -7,6 +7,8 @@
+ 模型下载入口已禁用；缺少模型时由管理员在准备环境导入审核过的模型文件。此版本不提供视频生成或原生视频处理：创建任务、配额查询、旧异步回调及后台轮询均在数据库写入和供应商初始化之前拒绝，不能通过恢复旧调用绕过界面限制。`ffmpeg-static` 已移除；内网 ComfyUI 视频处理需另行实现与验收后才能启用。
+ 
+ **验收状态请看 [DEPLOYMENT-VERIFICATION.md](./DEPLOYMENT-VERIFICATION.md)。当前开发环境没有 Docker CLI/daemon，不能把静态检查当作容器启动、真实数据库迁移或完整业务验收。必须在目标主机执行 `accept.mjs`，全部通过后再交付生产。**
++
++2026-10-30 检查点新增迁移全清单/哈希、SSE 完成事件和命令超时检查，必须重建应用镜像以包含 `migration-check.cjs`、`probe-deadline.cjs`、`sse-check.cjs`，不能用旧镜像绕过失败。普通 Docker 命令最多等待 30 秒，Compose 启动 6 分钟，应用探针外层 12 分钟；探针内部另有 10 分钟硬截止，数据库连接/语句/客户端查询分别限 10/15/20 秒。硬截止可能来不及清理测试账号和对象，报告会明确说明清理未确认，验收判定失败。使用新的专用测试账号，保留失败报告供清理核对。
+ 
+ ## 隔离结构
+ 
+--- a/deploy/intranet/accept.mjs
++++ b/deploy/intranet/accept.mjs
+@@ -1,18 +1,14 @@
+ import assert from 'node:assert/strict';
+-import { execFileSync, spawn } from 'node:child_process';
++import { spawn } from 'node:child_process';
+ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+ import { dirname, join, resolve } from 'node:path';
+ import { fileURLToPath } from 'node:url';
++import { observeCapture } from './capture-process.cjs';
++import { runCommand } from './command.cjs';
+ 
+ const dir = dirname(fileURLToPath(import.meta.url));
+-const docker = (args, input) =>
+-  execFileSync('docker', args, {
+-    cwd: dir,
+-    encoding: 'utf8',
+-    input,
+-    stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+-    maxBuffer: 32 * 1024 * 1024,
+-  });
++const docker = (args, input, options = {}) =>
++  runCommand('docker', args, { cwd: dir, input, ...options });
+ const compose = (...args) => docker(['compose', '-f', 'compose.yaml', ...args]);
+ const output = { startedAt: new Date().toISOString(), status: 'failed', stages: [] };
+ const record = (stage) => {
+@@ -64,7 +60,8 @@
+     assert.equal(actual.Id, expected.id, `Image ID mismatch: ${service.image}`);
+   }
+   record('compose-and-immutable-images');
+-  compose('up', '-d', '--pull', 'never', '--wait', '--wait-timeout', '300');
++  docker(['compose', '-f', 'compose.yaml', 'up', '-d', '--pull', 'never', '--wait', '--wait-timeout', '300'],
++    undefined, { stage: 'compose-startup', timeoutMs: 360_000 });
+   compose('exec', '-T', 'network-policy', '/bin/sh', '/policy/check.sh');
+   const policyNamespace = compose(
+     'exec',
+@@ -123,27 +120,19 @@
+       'network-policy',
+       '/bin/sh',
+       '-c',
+-      'echo $$ >/run/capture.pid; shift; exec tcpdump -U -n -i any -w /run/egress.pcap "$1"',
++      'export LC_ALL=C; echo $$ >/run/capture.pid; shift; exec tcpdump -U -n -i any -w /run/egress.pcap "$1"',
+       'capture',
+       'filter',
+       filter,
+     ],
+     { cwd: dir, stdio: ['ignore', 'ignore', 'pipe'] },
+   );
+-  await new Promise((resolveReady, reject) => {
+-    const timer = setTimeout(() => reject(new Error('Packet capture did not start')), 10_000);
+-    capture.once('error', reject);
+-    capture.once('exit', () => reject(new Error('Packet capture exited early')));
+-    capture.stderr.on('data', (chunk) => {
+-      if (chunk.toString().includes('listening on')) {
+-        clearTimeout(timer);
+-        resolveReady();
+-      }
+-    });
+-  });
++  const captureMonitor = observeCapture(capture);
++  await captureMonitor.waitReady();
+   const network = docker(
+     ['compose', '-f', 'compose.yaml', 'exec', '-T', '-e', 'NODE_OPTIONS=', 'app', 'node', '-'],
+     readFileSync(join(dir, 'probe-network.cjs'), 'utf8'),
++    { stage: 'kernel-network-probe', timeoutMs: 30_000 },
+   );
+   const application = docker(
+     [
+@@ -161,9 +150,11 @@
+       '-',
+     ],
+     readFileSync(join(dir, 'probe-app.cjs'), 'utf8'),
+-  );
+-  compose('exec', '-T', 'network-policy', '/bin/sh', '-c', 'kill -INT "$(cat /run/capture.pid)"');
+-  await new Promise((done) => capture.once('exit', done));
++    { stage: 'application-probe', timeoutMs: 720_000 },
++  );
++  output.captureStatistics = await captureMonitor.stop(() =>
++    compose('exec', '-T', 'network-policy', '/bin/sh', '-c', 'kill -INT "$(cat /run/capture.pid)"'),
++  );
+   capture = undefined;
+   const leakedPackets = compose(
+     'exec',
+@@ -197,6 +188,10 @@
+   // Docker config contains secrets: never print its captured stdout or stderr.
+   output.error =
+     error instanceof assert.AssertionError ? error.message : error.message.split('\n')[0];
++  if (error.code === 'INTRANET_COMMAND_TIMEOUT') output.commandFailure = {
++    stage: error.stage, timeoutMs: error.timeoutMs, timedOut: true,
++    containerTermination: 'unconfirmed', cleanup: 'unconfirmed',
++  };
+   console.error(`Acceptance FAILED: ${output.error}`);
+   process.exitCode = 1;
+ } finally {
+--- /dev/null
++++ b/deploy/intranet/capture-process.cjs
+@@ -0,0 +1,91 @@
++'use strict';
++
++function validateCaptureStatistics(stderr) {
++  const statistics = {};
++  for (const [key, label] of Object.entries({
++    captured: 'captured',
++    received: 'received by filter',
++    dropped: 'dropped by kernel',
++  })) {
++    const matches = [...stderr.matchAll(new RegExp(`^(\\d+) packets? ${label}\\r?$`, 'gm'))];
++    if (matches.length !== 1 || !Number.isSafeInteger(Number(matches[0][1])))
++      throw new Error('Packet capture statistics missing or invalid; evidence is incomplete');
++    statistics[key] = Number(matches[0][1]);
++  }
++  if (statistics.dropped !== 0)
++    throw new Error('Packet capture dropped packets; evidence is incomplete');
++  return statistics;
++}
++
++// Observe from spawn time: a failed or interrupted capture cannot prove zero egress.
++function observeCapture(child, timeoutMs = 10_000) {
++  let outcome;
++  let exited = false;
++  let ready = false;
++  let stderr = '';
++  let finishReady;
++  const readiness = new Promise((resolve) => {
++    finishReady = resolve;
++  });
++  let finish;
++  const completion = new Promise((resolve) => {
++    finish = resolve;
++  });
++  const onData = (chunk) => {
++    stderr = (stderr + chunk.toString()).slice(-4096);
++    if (stderr.includes('listening on')) {
++      ready = true;
++      finishReady(true);
++    }
++  };
++  child.stderr.on('data', onData);
++  const complete = (result) => {
++    if (outcome) return;
++    outcome = result;
++    child.stderr.removeListener('data', onData);
++    finishReady(false);
++    finish(result);
++  };
++  child.once('error', () => complete({ error: true }));
++  child.once('exit', () => {
++    exited = true;
++    finishReady(false);
++  });
++  // 'exit' can precede the final stderr data. Wait for closed streams before
++  // validating tcpdump's final capture/drop counters.
++  child.once('close', (code, signal) => complete({ code, signal }));
++  const bounded = async (promise, message) => {
++    let timer;
++    try {
++      return await Promise.race([
++        promise,
++        new Promise((_, reject) => {
++          timer = setTimeout(() => reject(new Error(message)), timeoutMs);
++        }),
++      ]);
++    } finally {
++      clearTimeout(timer);
++    }
++  };
++  const assertRunning = () => {
++    if (outcome || exited || child.exitCode !== null || child.signalCode !== null)
++      throw new Error('Packet capture exited before the probe window completed');
++  };
++  return {
++    async waitReady() {
++      if (!(await bounded(readiness, 'Packet capture did not start')) || !ready)
++        throw new Error('Packet capture failed before readiness');
++      assertRunning();
++    },
++    async stop(requestStop) {
++      assertRunning();
++      await requestStop();
++      const result = await bounded(completion, 'Packet capture did not stop');
++      if (result.error || result.code !== 0 || result.signal)
++        throw new Error('Packet capture did not exit successfully; evidence is incomplete');
++      return validateCaptureStatistics(stderr);
++    },
++  };
++}
++
++module.exports = { observeCapture, validateCaptureStatistics };
+--- /dev/null
++++ b/deploy/intranet/capture-process.test.cjs
+@@ -0,0 +1,150 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++const { spawn } = require('node:child_process');
++const { once } = require('node:events');
++const test = require('node:test');
++const { observeCapture, validateCaptureStatistics } = require('./capture-process.cjs');
++
++function fixture(t, code, timeout = 5000) {
++  const child = spawn(process.execPath, ['-e', code], { stdio: ['pipe', 'ignore', 'pipe'] });
++  t.after(() => {
++    child.stdin.destroy();
++    child.kill('SIGKILL');
++  });
++  return { child, monitor: observeCapture(child, timeout) };
++}
++const summary = '0 packets captured\n0 packets received by filter\n0 packets dropped by kernel\n';
++const successfulStop = `process.stdin.once('data', () => { process.stderr.write(${JSON.stringify(summary)}, () => process.exit(0)); });`;
++const ready = "process.stderr.write('listening on test\\n');";
++
++test('successful capture must remain alive until requested stop', async (t) => {
++  const { child, monitor } = fixture(t, ready + successfulStop);
++  await monitor.waitReady();
++  await monitor.stop(() => child.stdin.write('stop'));
++});
++
++test('readiness marker split between chunks is recognized', async (t) => {
++  const { child, monitor } = fixture(
++    t,
++    "process.stderr.write('listen'); setTimeout(() => process.stderr.write('ing on test\\n'), 30);" +
++      successfulStop,
++  );
++  await monitor.waitReady();
++  await monitor.stop(() => child.stdin.write('stop'));
++});
++
++test('nonzero stop exit fails even if a capture file could be empty', async (t) => {
++  const { child, monitor } = fixture(
++    t,
++    ready + "process.stdin.once('data', () => process.exit(7));",
++  );
++  await monitor.waitReady();
++  await assert.rejects(
++    monitor.stop(() => child.stdin.write('stop')),
++    /evidence is incomplete/,
++  );
++});
++
++test('capture that exits during probes fails even with exit zero', async (t) => {
++  const { child, monitor } = fixture(
++    t,
++    ready + "process.stdin.once('data', () => process.exit(0));",
++  );
++  await monitor.waitReady();
++  const ended = once(child, 'exit');
++  child.stdin.write('unexpected exit');
++  await ended;
++  let stopCalled = false;
++  await assert.rejects(
++    monitor.stop(() => {
++      stopCalled = true;
++    }),
++    /before the probe window/,
++  );
++  assert.equal(stopCalled, false);
++});
++
++test('signal termination does not count as successful capture', async (t) => {
++  const { child, monitor } = fixture(t, ready + 'setInterval(() => {}, 1000);');
++  await monitor.waitReady();
++  await assert.rejects(
++    monitor.stop(() => child.kill('SIGTERM')),
++    /evidence is incomplete/,
++  );
++});
++
++test('startup failure is reported without waiting for readiness timeout', async (t) => {
++  const { monitor } = fixture(t, 'process.exit(2);');
++  await assert.rejects(monitor.waitReady(), /failed before readiness/);
++});
++
++test('startup without a readiness marker is bounded', async (t) => {
++  const { monitor } = fixture(t, 'setInterval(() => {}, 1000);', 1000);
++  await assert.rejects(monitor.waitReady(), /did not start/);
++});
++
++test('capture ignoring the stop request is bounded', async (t) => {
++  const { monitor } = fixture(t, ready + 'setInterval(() => {}, 1000);', 1000);
++  await monitor.waitReady();
++  await assert.rejects(
++    monitor.stop(() => {}),
++    /did not stop/,
++  );
++});
++
++test('final counters are returned only after stderr closes', async (t) => {
++  const { child, monitor } = fixture(t, ready + successfulStop);
++  await monitor.waitReady();
++  assert.deepEqual(await monitor.stop(() => child.stdin.write('stop')), {
++    captured: 0,
++    received: 0,
++    dropped: 0,
++  });
++});
++
++test('exit zero without capture counters cannot prove zero egress', async (t) => {
++  const { child, monitor } = fixture(
++    t,
++    ready + "process.stdin.once('data', () => process.exit(0));",
++  );
++  await monitor.waitReady();
++  await assert.rejects(
++    monitor.stop(() => child.stdin.write('stop')),
++    /statistics missing or invalid/,
++  );
++});
++
++test('kernel packet drops fail an otherwise successful capture', async (t) => {
++  const code = successfulStop.replace('0 packets dropped', '1 packet dropped');
++  const { child, monitor } = fixture(t, ready + code);
++  await monitor.waitReady();
++  await assert.rejects(
++    monitor.stop(() => child.stdin.write('stop')),
++    /dropped packets/,
++  );
++});
++
++test('counter parser accepts Linux singular/plural output and preserves counters', () => {
++  assert.deepEqual(
++    validateCaptureStatistics(
++      '1 packet captured\n2 packets received by filter\n0 packets dropped by kernel\n',
++    ),
++    {
++      captured: 1,
++      received: 2,
++      dropped: 0,
++    },
++  );
++});
++
++test('missing, malformed, duplicate and overflowing counters fail closed', () => {
++  for (const value of [
++    '',
++    summary.replace('0 packets captured\n', ''),
++    summary.replace('0 packets captured', '-1 packets captured'),
++    summary + '0 packets dropped by kernel\n',
++    summary.replace('0 packets received', '9007199254740992 packets received'),
++  ])
++    assert.throws(() => validateCaptureStatistics(value), /statistics missing or invalid/);
++});
+--- /dev/null
++++ b/deploy/intranet/command.cjs
+@@ -0,0 +1,31 @@
++'use strict';
++
++const { execFileSync } = require('node:child_process');
++
++// Docker errors may include captured output and expanded configuration secrets.
++// Only stable stage names and process status belong in the acceptance report.
++function runCommand(file, args, { cwd, input, stage = 'docker-command', timeoutMs = 30_000 } = {}) {
++  if (!/^[a-z0-9-]+$/.test(stage)) throw new Error('Invalid command stage');
++  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid command deadline');
++  try {
++    return execFileSync(file, args, {
++      cwd, encoding: 'utf8', input,
++      stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'],
++      maxBuffer: 32 * 1024 * 1024,
++      timeout: timeoutMs,
++      killSignal: 'SIGKILL',
++    });
++  } catch (cause) {
++    const timedOut = cause.code === 'ETIMEDOUT';
++    const error = new Error(timedOut
++      ? `${stage} timed out after ${timeoutMs}ms; container command termination and cleanup are unconfirmed`
++      : `${stage} failed (exit ${Number.isInteger(cause.status) ? cause.status : 'unavailable'})`);
++    error.code = timedOut ? 'INTRANET_COMMAND_TIMEOUT' : 'INTRANET_COMMAND_FAILED';
++    error.stage = stage;
++    error.timeoutMs = timeoutMs;
++    error.timedOut = timedOut;
++    throw error;
++  }
++}
++
++module.exports = { runCommand };
+--- /dev/null
++++ b/deploy/intranet/command.test.cjs
+@@ -0,0 +1,55 @@
++'use strict';
++const assert = require('node:assert/strict');
++const { spawnSync } = require('node:child_process');
++const { join } = require('node:path');
++const test = require('node:test');
++const { runCommand } = require('./command.cjs');
++
++test('command input/output is preserved on success', () => {
++  assert.equal(runCommand(process.execPath, ['-e', 'process.stdin.pipe(process.stdout)'],
++    { input: 'fixture input', stage: 'fixture', timeoutMs: 2000 }), 'fixture input');
++});
++test('a stalled command is forcibly bounded and never passes', () => {
++  const started = Date.now();
++  assert.throws(() => runCommand(process.execPath, ['-e', "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"],
++    { stage: 'stalled-fixture', timeoutMs: 100 }), error => {
++      assert.equal(error.code, 'INTRANET_COMMAND_TIMEOUT');
++      assert.equal(error.stage, 'stalled-fixture');
++      assert.match(error.message, /termination and cleanup are unconfirmed/);
++      return true;
++    });
++  assert(Date.now() - started < 3000);
++});
++test('command failures do not expose command arguments, captured output or underlying error', () => {
++  assert.throws(() => runCommand(process.execPath,
++    ['-e', "console.log('PRIVATE_STDOUT');console.error('PRIVATE_STDERR');process.exit(7)", 'PRIVATE_ARGUMENT'],
++    { stage: 'fixture', timeoutMs: 2000 }), error => {
++      assert.equal(error.message, 'fixture failed (exit 7)');
++      assert.equal(error.code, 'INTRANET_COMMAND_FAILED');
++      assert(!JSON.stringify(error).includes('PRIVATE'));
++      assert(!String(error.stack).includes('PRIVATE'));
++      assert.equal(error.cause, undefined);
++      return true;
++    });
++});
++test('missing executables and invalid deadlines fail explicitly', () => {
++  assert.throws(() => runCommand('/missing-intranet-fixture', [], { stage: 'fixture' }), /exit unavailable/);
++  for (const timeoutMs of [0, -1, NaN, Infinity])
++    assert.throws(() => runCommand(process.execPath, [], { timeoutMs }), /deadline/);
++});
++test('the in-container deadline independently terminates a stalled probe with failure', () => {
++  const result = spawnSync(process.execPath, ['-e',
++    `require(${JSON.stringify(join(__dirname, 'probe-deadline.cjs'))}).armProbeDeadline(50);setInterval(()=>{},1000)`],
++  { encoding: 'utf8', timeout: 2000 });
++  assert.equal(result.status, 1);
++  assert.equal(result.signal, null);
++  assert.match(result.stderr, /timed out.*cleanup are unconfirmed/);
++});
++test('completed probes disarm the deadline', () => {
++  const result = spawnSync(process.execPath, ['-e',
++    `const clear=require(${JSON.stringify(join(__dirname, 'probe-deadline.cjs'))}).armProbeDeadline(20);clear();setTimeout(()=>console.log('finished'),60)`],
++  { encoding: 'utf8', timeout: 2000 });
++  assert.equal(result.status, 0);
++  assert.equal(result.stdout.trim(), 'finished');
++  assert.equal(result.stderr, '');
++});
+--- /dev/null
++++ b/deploy/intranet/migration-check.cjs
+@@ -0,0 +1,28 @@
++'use strict';
++const assert = require('node:assert/strict');
++
++// Use the same reader/hash implementation as the actual Drizzle migrator.
++async function verifyDatabaseMigrations(database, migrationsFolder = '/app/migrations', readMigrations) {
++  const reader = readMigrations || require('drizzle-orm/migrator').readMigrationFiles;
++  const expected = reader({ migrationsFolder });
++  assert(Array.isArray(expected) && expected.length > 0, 'Packaged migration journal is empty');
++  let previous = -1;
++  for (const migration of expected) {
++    assert(Number.isSafeInteger(migration.folderMillis) && migration.folderMillis > previous,
++      'Packaged migration timestamps are invalid or unordered');
++    assert(typeof migration.hash === 'string' && /^[a-f0-9]{64}$/.test(migration.hash),
++      'Packaged migration hash is invalid');
++    previous = migration.folderMillis;
++  }
++  const result = await database.query(
++    'SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at, id',
++  );
++  assert.equal(result.rows.length, expected.length, 'Applied migration count does not match this image');
++  for (let i = 0; i < expected.length; i++) {
++    assert.equal(String(result.rows[i].created_at), String(expected[i].folderMillis),
++      `Migration timestamp mismatch at journal entry ${i}`);
++    assert.equal(result.rows[i].hash, expected[i].hash, `Migration hash mismatch at journal entry ${i}`);
++  }
++  return { count: expected.length, lastTimestamp: previous, hashesVerified: true };
++}
++module.exports = { verifyDatabaseMigrations };
+--- /dev/null
++++ b/deploy/intranet/migration-check.test.cjs
+@@ -0,0 +1,37 @@
++'use strict';
++const assert = require('node:assert/strict');
++const test = require('node:test');
++const { verifyDatabaseMigrations } = require('./migration-check.cjs');
++const expected = [{ folderMillis: 100, hash: 'a'.repeat(64) }, { folderMillis: 200, hash: 'b'.repeat(64) }];
++const rows = () => expected.map(m => ({ created_at: String(m.folderMillis), hash: m.hash }));
++const verify = (data, journal = expected) => verifyDatabaseMigrations({query: async(sql) => {
++  assert.equal(sql, 'SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at, id');
++  return {rows: data};
++}}, '/test/migrations', ({migrationsFolder}) => { assert.equal(migrationsFolder, '/test/migrations'); return journal; });
++test('all applied timestamps and hashes match the packaged image', async () => {
++ assert.deepEqual(await verify(rows()), {count: 2, lastTimestamp: 200, hashesVerified: true});
++});
++test('partial nonempty history is rejected', async () => {await assert.rejects(verify(rows().slice(0,1)), /count/);});
++test('extra migrations from another image are rejected', async () => {await assert.rejects(verify([...rows(),...rows()]), /count/);});
++test('same count but changed SQL hash is rejected', async () => {const r=rows();r[1].hash='c'.repeat(64);await assert.rejects(verify(r), /hash mismatch/);});
++test('duplicate or incorrect timestamps are rejected', async () => {const r=rows();r[1].created_at='100';await assert.rejects(verify(r), /timestamp mismatch/);});
++test('empty, malformed or unordered packaged journals fail before querying', async () => {
++ for(const journal of [[], [...expected].reverse(), [{folderMillis: NaN,hash: 'a'.repeat(64)}], [{folderMillis:100,hash:'bad'}]])
++  await assert.rejects(verify([],journal), /Packaged/);
++});
++test('missing migration source and database errors propagate', async () => {
++ await assert.rejects(verifyDatabaseMigrations({},'/missing',()=>{throw Error('missing SQL');}), /missing SQL/);
++ await assert.rejects(verifyDatabaseMigrations({query:async()=>{throw Error('database unavailable');}},'/test',()=>expected), /database unavailable/);
++});
++test('both Docker entrypoints package all local helpers required by the stdin probe', () => {
++ const {readFileSync}=require('node:fs');const {join}=require('node:path');
++ const probe=readFileSync(join(__dirname,'probe-app.cjs'),'utf8');
++ const helpers=[...probe.matchAll(/require\('\/app\/([^']+)'\)/g)].map(match=>match[1]);
++ assert(helpers.includes('migration-check.cjs'));
++ assert(helpers.includes('probe-deadline.cjs'));
++ assert(helpers.includes('sse-check.cjs'));
++ for(const name of ['Dockerfile','Dockerfile.intranet']) {
++  const docker=readFileSync(join(__dirname,'../..',name),'utf8');
++  for(const helper of helpers)assert(docker.includes(`/app/deploy/intranet/${helper} /app/${helper}`), `${name} does not package ${helper}`);
++ }
++});
+--- /dev/null
++++ b/deploy/intranet/migration-reader.test.cjs
+@@ -0,0 +1,45 @@
++'use strict';
++
++// Run after installing the frozen lockfile. These checks use the actual pinned
++// Drizzle reader and packaged SQL; the database rows are fixtures, not a live DB.
++const assert = require('node:assert/strict');
++const { createHash } = require('node:crypto');
++const { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
++const { tmpdir } = require('node:os');
++const { join, resolve } = require('node:path');
++const test = require('node:test');
++const { readMigrationFiles } = require('drizzle-orm/migrator');
++const { verifyDatabaseMigrations } = require('./migration-check.cjs');
++
++const source = resolve(__dirname, '../../packages/database/migrations');
++const journal = JSON.parse(readFileSync(join(source, 'meta/_journal.json'), 'utf8'));
++const rows = journal.entries.map((entry) => ({
++  created_at: String(entry.when),
++  hash: createHash('sha256').update(readFileSync(join(source, `${entry.tag}.sql`))).digest('hex'),
++}));
++
++test('the pinned Drizzle reader loads all 105 packaged SQL files with matching timestamps and hashes', async () => {
++  const actual = readMigrationFiles({ migrationsFolder: source });
++  assert.equal(actual.length, 105);
++  assert.deepEqual(actual.map((entry) => ({ created_at: String(entry.folderMillis), hash: entry.hash })), rows);
++  const evidence = await verifyDatabaseMigrations({ query: async () => ({ rows }) }, source);
++  assert.deepEqual(evidence, { count: 105, lastTimestamp: journal.entries.at(-1).when, hashesVerified: true });
++});
++
++test('the real reader rejects SQL drift and missing packaged SQL before granting migration evidence', async () => {
++  const folder = mkdtempSync(join(tmpdir(), 'intranet-migrations-'));
++  try {
++    mkdirSync(join(folder, 'meta'));
++    copyFileSync(join(source, 'meta/_journal.json'), join(folder, 'meta/_journal.json'));
++    for (const entry of journal.entries) copyFileSync(join(source, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
++    const file = join(folder, `${journal.entries[0].tag}.sql`);
++    writeFileSync(file, `${readFileSync(file, 'utf8')}\n-- changed SQL\n`);
++    await assert.rejects(verifyDatabaseMigrations({ query: async () => ({ rows }) }, folder), /Migration hash mismatch/);
++    rmSync(file);
++    let queried = false;
++    await assert.rejects(verifyDatabaseMigrations({ query: async () => { queried = true; return { rows }; } }, folder), /No file/);
++    assert.equal(queried, false);
++  } finally {
++    rmSync(folder, { recursive: true, force: true });
++  }
++});
+--- a/deploy/intranet/prepare-runtime.cjs
++++ b/deploy/intranet/prepare-runtime.cjs
+@@ -22,6 +22,7 @@
+ const ROOT_PACKAGES = ['pg', 'drizzle-orm', '@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'];
+ const VALIDATION_MODULES = [
+   'pg',
++  'drizzle-orm/migrator',
+   'drizzle-orm/node-postgres',
+   'drizzle-orm/node-postgres/migrator',
+   '@aws-sdk/client-s3',
+--- a/deploy/intranet/probe-app.cjs
++++ b/deploy/intranet/probe-app.cjs
+@@ -5,6 +5,11 @@
+ const { Pool } = require('pg');
+ const { S3Client, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
++const { verifyDatabaseMigrations } = require('/app/migration-check.cjs');
++const { armProbeDeadline } = require('/app/probe-deadline.cjs');
++const { verifyOllamaChatStream } = require('/app/sse-check.cjs');
++
++const clearDeadline = armProbeDeadline();
+ 
+ (async () => {
+   const origin = process.env.APP_URL;
+@@ -23,6 +28,10 @@
+   let cookie;
+   let created = false;
+   let createdId;
++  let probeFailure;
++  let migrationEvidence;
++  let applicationEvidence;
++  let streamEvidence;
+   const key = `acceptance/${randomUUID()}.txt`;
+   const s3 = new S3Client({
+     endpoint: origin,
+@@ -76,29 +85,7 @@
+         temperature: 0,
+       }),
+     });
+-    assert(appChat.ok, `Authenticated application chat HTTP ${appChat.status}`);
+-    const chatStream = await appChat.text();
+-    const textEvents = chatStream
+-      .split(/\r?\n\r?\n/)
+-      .filter((event) => /^event: text$/m.test(event))
+-      .map((event) =>
+-        event
+-          .split(/\r?\n/)
+-          .filter((line) => line.startsWith('data:'))
+-          .map((line) => line.slice(5).trim())
+-          .join('\n'),
+-      )
+-      .filter(Boolean);
+-    assert(
+-      textEvents.some((data) => {
+-        try {
+-          return typeof JSON.parse(data) === 'string' && JSON.parse(data).trim().length > 0;
+-        } catch {
+-          return false;
+-        }
+-      }) && !chatStream.includes('event: error'),
+-      'Application chat stream did not contain generated text',
+-    );
++    streamEvidence = await verifyOllamaChatStream(appChat);
+ 
+     const page = await request('/');
+     assert(page.ok, `Application page HTTP ${page.status}`);
+@@ -170,72 +157,82 @@
+       1024,
+       'Knowledge embedding must match the database vector dimension',
+     );
+-    const database = new Pool({ connectionString: process.env.DATABASE_URL });
++    const database = new Pool({
++      connectionString: process.env.DATABASE_URL,
++      connectionTimeoutMillis: 10_000,
++      statement_timeout: 15_000,
++      query_timeout: 20_000,
++    });
+     try {
+       const extensions = await database.query(
+         "SELECT extname FROM pg_extension WHERE extname IN ('vector','pg_search')",
+       );
+       assert.equal(extensions.rowCount, 2, 'Both vector and pg_search are mandatory');
+-      const migrations = await database.query(
+-        'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',
+-      );
+-      assert(migrations.rows[0].count > 0, 'No applied migrations');
++      migrationEvidence = await verifyDatabaseMigrations(database);
+     } finally {
+       await database.end();
+     }
+-    console.log(
+-      JSON.stringify({
++    applicationEvidence = {
+         signup: 'passed',
+         passwordSignin: 'passed',
+         session: 'passed',
+         applicationChatStream: 'passed',
++        stream: streamEvidence,
+         signedStorage: 'passed',
+         pageCsp: 'passed',
+         uploadedContentSandbox: 'passed',
+         modelChat: 'passed',
+         embeddingDimensions: 1024,
+-        migrations: 'passed',
+-      }),
+-    );
++        migrations: migrationEvidence,
++    };
++  } catch (error) {
++    probeFailure = error;
++    throw error;
+   } finally {
+-    await s3.send(new DeleteObjectCommand({ Bucket: 'lobehub-files', Key: key }));
+-    s3.destroy();
++    // Independent cleanup stages: storage/auth failure must not leave a known
++    // disposable account behind. Never delete by email alone.
++    const failed = [];
++    const attempt = async (stage, action) => {
++      try { await action(); } catch { failed.push(stage); }
++    };
++    await attempt('storage-object', () => s3.send(
++      new DeleteObjectCommand({ Bucket: 'lobehub-files', Key: key }),
++      { abortSignal: AbortSignal.timeout(15_000) },
++    ));
++    await attempt('storage-client', () => s3.destroy());
+     if (created) {
+-      if (!cookie) {
+-        const signin = await request('/api/auth/sign-in/email', {
+-          method: 'POST',
+-          body: JSON.stringify({ email, password }),
++      if (cookie) await attempt('session-signout', async () => {
++        const response = await request('/api/auth/sign-out', {
++          method: 'POST', headers: { Cookie: cookie }, body: '{}',
+         });
+-        cookie = signin.headers
+-          .getSetCookie()
+-          .map((value) => value.split(';')[0])
+-          .join('; ');
+-      }
+-      await request('/api/auth/sign-out', {
+-        method: 'POST',
+-        headers: { Cookie: cookie },
+-        body: '{}',
++        assert(response.ok, 'Signout failed');
+       });
+-      const cleanup = new Pool({ connectionString: process.env.DATABASE_URL });
+-      try {
+-        // Better Auth deleteUser is disabled upstream. Delete only the exact
+-        // account this probe just created, using bound SQL parameters.
++      await attempt('test-user', async () => {
+         assert(createdId, 'Cannot safely clean up an unknown test user');
+-        const deleted = await cleanup.query('DELETE FROM users WHERE id=$1 AND email=$2', [
+-          createdId,
+-          email,
+-        ]);
+-        assert.equal(
+-          deleted.rowCount,
+-          1,
+-          'Test user cleanup failed; inspect before retrying acceptance',
+-        );
+-      } finally {
+-        await cleanup.end();
+-      }
++        const cleanup = new Pool({
++          connectionString: process.env.DATABASE_URL,
++          connectionTimeoutMillis: 10_000,
++          statement_timeout: 15_000,
++          query_timeout: 20_000,
++        });
++        try {
++          // Sessions/accounts cascade from the exact created user, even when
++          // authentication is unavailable and a session cannot be signed out.
++          const deleted = await cleanup.query('DELETE FROM users WHERE id=$1 AND email=$2', [createdId, email]);
++          assert.equal(deleted.rowCount, 1, 'Test user cleanup failed');
++        } finally {
++          await cleanup.end();
++        }
++      });
+     }
++    if (failed.length) throw new AggregateError(
++      probeFailure ? [probeFailure] : [],
++      `Cleanup failed: ${failed.join(', ')}; ${probeFailure ? 'probe also failed' : 'inspect before retrying acceptance'}`,
++    );
+   }
++  // A passing result is emitted only after all cleanup stages succeed.
++  console.log(JSON.stringify(applicationEvidence));
+ })().catch((error) => {
+   console.error(`Application acceptance failed: ${error.message}`);
+   process.exitCode = 1;
+-});
++}).finally(clearDeadline);
+--- /dev/null
++++ b/deploy/intranet/probe-cleanup.test.cjs
+@@ -0,0 +1,107 @@
++'use strict';
++const assert = require('node:assert/strict');
++const { readFileSync } = require('node:fs');
++const { join } = require('node:path');
++const vm = require('node:vm');
++const test = require('node:test');
++
++// Execute the entire production probe, with controlled service failures.
++async function run(options = {}) {
++  const events = [], errors = [], queries = [], pools = [], reports = [];
++  const process = { env: { APP_URL: 'https://lobe.internal', OLLAMA_PROXY_URL: 'http://172.30.90.13:11434', INTRANET_TEST_EMAIL: 'test@corp.internal', INTRANET_TEST_PASSWORD: 'test-password-123456' } };
++  class Pool {
++    constructor(config) { pools.push(config); }
++    async query(sql, values) {
++      if (sql.startsWith('SELECT extname')) return {rowCount: 2};
++      events.push('delete-user'); queries.push({ sql, values: [...values] }); if (options.dbFail) throw Error('db failure'); return { rowCount: 1 };
++    }
++    async end() { events.push('end-db'); }
++  }
++  class S3Client {
++    async send(command, config) { events.push('delete-object'); assert(config.abortSignal); if (options.s3Fail) throw Error('s3 failure'); }
++    destroy() { events.push('destroy-s3'); }
++  }
++  const response = (ok, data, cookies=[]) => ({ ok, status: ok?200:503, json: async()=>data, headers:{getSetCookie:()=>cookies} });
++  await vm.runInNewContext(readFileSync(join(__dirname, 'probe-app.cjs'), 'utf8'), {
++    require(name) {
++      if (name==='/app/migration-check.cjs') return options.complete
++        ? { verifyDatabaseMigrations: async()=>({count:105,hashesVerified:true}) }
++        : require('./migration-check.cjs');
++      if (name==='/app/probe-deadline.cjs') return require('./probe-deadline.cjs');
++      if (name==='/app/sse-check.cjs') return require('./sse-check.cjs');
++      if (name==='pg') return { Pool };
++      if (name==='@aws-sdk/client-s3') return { S3Client, GetObjectCommand: class {}, DeleteObjectCommand: class {} };
++      if (name==='@aws-sdk/s3-request-presigner') return { getSignedUrl: async()=>{
++        if(options.complete) return 'https://lobe.internal/lobehub-files/test?get';
++        throw Error('unexpected');
++      } };
++      return require(name);
++    }, process, AbortSignal, URL, console: { log(message){events.push('report');reports.push(message);}, error(message){errors.push(message);} },
++    fetch: async (url) => {
++      if(url.endsWith('/sign-up/email')) return response(!options.signupFail, {user: {id: options.missingId ? undefined : 'created-user'} });
++      if(url.endsWith('/sign-in/email')) return response(!options.signinFail, {}, ['session=test']);
++      if(url.endsWith('/get-session')) {
++        if (options.complete) return response(true, {user:{email:process.env.INTRANET_TEST_EMAIL}});
++        throw Error('intentional probe failure');
++      }
++      if(url.endsWith('/sign-out')) { events.push('signout'); return response(!options.signoutFail, {}); }
++      if(options.complete) {
++        if(url.endsWith('/webapi/chat/ollama')) return new Response('event: text\ndata: "OK"\n\nevent: stop\ndata: "finished"\n\n', {headers:{'content-type':'text/event-stream'}});
++        if(url==='https://lobe.internal/') return new Response('', {headers:{'content-security-policy':"connect-src 'self'; default-src 'none'"}});
++        if(url.endsWith('/upload.createS3PreSignedUrl')) return response(true, {result:{data:{json:'https://lobe.internal/lobehub-files/test?put'}}});
++        if(url.endsWith('?put')) return new Response('');
++        if(url.endsWith('?get')) return new Response('intranet upload verified', {headers:{'content-security-policy':'sandbox','content-disposition':'attachment'}});
++        if(url.endsWith('/api/tags')) return response(true, {models:[{name:'qwen3:8b'},{name:'bge-m3'}]});
++        if(url.endsWith('/api/chat')) return response(true, {message:{content:'OK'}});
++        if(url.endsWith('/api/embed')) return response(true, {embeddings:[Array(1024).fill(0)]});
++      }
++      throw Error('Unexpected request');
++    },
++  });
++  if (!options.complete || options.s3Fail || options.signoutFail || options.dbFail) assert.equal(process.exitCode,1);
++  else assert.equal(process.exitCode,undefined);
++  return { events, errors, queries, pools, reports };
++}
++test('S3 deletion failure still signs out and deletes the exact new user', async()=>{
++  const r=await run({s3Fail:true});
++  assert.deepEqual(r.events,['delete-object','destroy-s3','signout','delete-user','end-db']);
++  assert.deepEqual(r.queries,[{sql:'DELETE FROM users WHERE id=$1 AND email=$2',values:['created-user','test@corp.internal']}]);
++  assert.match(r.errors[0],/storage-object.*probe also failed/);
++});
++test('signout failure still attempts database cleanup',async()=>{
++ const r=await run({signoutFail:true}); assert(r.events.includes('delete-user')); assert.match(r.errors[0],/session-signout/);
++});
++test('failed signin does not prevent deletion or retry authentication',async()=>{
++ const r=await run({signinFail:true}); assert(r.events.includes('delete-user')); assert(!r.events.includes('signout'));
++});
++test('all cleanup failures are reported and database pool closes',async()=>{
++ const r=await run({s3Fail:true,signoutFail:true,dbFail:true}); assert(r.events.includes('end-db')); assert.match(r.errors[0],/storage-object, session-signout, test-user/);
++});
++test('failed signup never deletes a pre-existing account',async()=>{
++ const r=await run({signupFail:true}); assert.equal(r.queries.length,0);
++});
++test('missing new identity fails safely without deleting by email',async()=>{
++ const r=await run({missingId:true}); assert.equal(r.queries.length,0); assert.match(r.errors[0],/test-user/);
++});
++test('successful cleanup preserves the original probe failure',async()=>{
++ const r=await run(); assert.match(r.errors[0],/intentional probe failure/); assert(!r.errors[0].includes('Cleanup failed'));
++});
++test('complete probe uses bounded database pools and emits success after cleanup', async()=>{
++ const r=await run({complete:true});
++ assert.equal(r.errors.length,0);
++ assert.equal(r.pools.length,2);
++ for(const config of r.pools) {
++   assert.equal(config.connectionTimeoutMillis,10000);
++   assert.equal(config.statement_timeout,15000);
++   assert.equal(config.query_timeout,20000);
++ }
++ assert.equal(r.events.at(-1),'report');
++ assert.equal(r.events.at(-2),'end-db');
++ assert.equal(JSON.parse(r.reports[0]).stream.completion,'finished');
++});
++test('cleanup failure after successful service checks never emits a passing report', async()=>{
++ const r=await run({complete:true,s3Fail:true});
++ assert.equal(r.reports.length,0);
++ assert.match(r.errors[0],/Cleanup failed: storage-object/);
++ assert(r.events.includes('delete-user'));
++});
+--- /dev/null
++++ b/deploy/intranet/probe-deadline.cjs
+@@ -0,0 +1,15 @@
++'use strict';
++
++// The host killing docker exec does not stop the process inside the container.
++// This independent deadline bounds that process even if an SDK/socket stalls.
++function armProbeDeadline(timeoutMs = 600_000) {
++  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid probe deadline');
++  const timer = setTimeout(() => {
++    console.error('Application acceptance timed out; temporary account and object cleanup are unconfirmed');
++    process.exit(1);
++  }, timeoutMs);
++  timer.unref();
++  return () => clearTimeout(timer);
++}
++
++module.exports = { armProbeDeadline };
+--- /dev/null
++++ b/deploy/intranet/sse-check.cjs
+@@ -0,0 +1,78 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++
++// Check the actual protocol produced by OllamaStream while reading the body.
++// Chunk boundaries are transport details: one event may span many reads.
++async function verifyOllamaChatStream(response) {
++  assert(response.ok, `Authenticated application chat HTTP ${response.status}`);
++  assert(/^text\/event-stream(?:\s*;|\s*$)/i.test(response.headers.get('content-type') || ''),
++    'Application chat did not return an SSE response');
++  assert(response.body, 'Application chat response has no stream');
++  const reader = response.body.getReader();
++  const decoder = new TextDecoder('utf-8', { fatal: true });
++  let buffered = '', eventLines = [], textEvents = 0, stopEvents = 0, bytes = 0;
++  const consume = (event) => {
++    const lines = event.split(/\r\n|\r|\n/);
++    let type = 'message';
++    const data = [];
++    for (const line of lines) {
++      if (line.startsWith(':') || !line) continue;
++      const colon = line.indexOf(':');
++      const field = colon < 0 ? line : line.slice(0, colon);
++      const value = colon < 0 ? '' : line.slice(colon + 1).replace(/^ /, '');
++      if (field === 'event') type = value;
++      if (field === 'data') data.push(value);
++    }
++    assert(type !== 'error', 'Application chat stream reported an error');
++    if (!data.length) return;
++    if (type === 'text') {
++      assert.equal(stopEvents, 0, 'Application chat emitted text after completion');
++      const value = JSON.parse(data.join('\n'));
++      assert.equal(typeof value, 'string', 'Application chat text is invalid');
++      if (value.trim()) textEvents++;
++    } else if (type === 'stop') {
++      assert.equal(JSON.parse(data.join('\n')), 'finished', 'Application chat completion is invalid');
++      assert.equal(++stopEvents, 1, 'Application chat completed more than once');
++    }
++  };
++  const drain = (atEnd = false) => {
++    // SSE permits CR, LF or CRLF per line, including mixed line endings.
++    // Defer a terminal CR until the next chunk decides whether it forms CRLF.
++    let match;
++    while ((match = /[\r\n]/.exec(buffered))) {
++      if (match[0] === '\r' && match.index === buffered.length - 1 && !atEnd) break;
++      const line = buffered.slice(0, match.index);
++      const width = buffered.slice(match.index, match.index + 2) === '\r\n' ? 2 : 1;
++      buffered = buffered.slice(match.index + width);
++      if (line) eventLines.push(line);
++      else {
++        consume(eventLines.join('\n'));
++        eventLines = [];
++      }
++    }
++  };
++  try {
++    while (true) {
++      const { value, done } = await reader.read();
++      if (done) break;
++      bytes += value.byteLength;
++      assert(bytes <= 1024 * 1024, 'Application chat acceptance response exceeds 1MiB');
++      buffered += decoder.decode(value, { stream: true });
++      drain();
++    }
++    buffered += decoder.decode();
++    drain(true);
++    assert(!buffered.trim() && !eventLines.length, 'Application chat stream ended inside an event');
++    assert(textEvents > 0, 'Application chat stream did not contain generated text');
++    assert.equal(stopEvents, 1, 'Application chat stream ended before completion');
++    return { textEvents, completion: 'finished', bytes };
++  } catch (error) {
++    await reader.cancel().catch(() => {});
++    throw error;
++  } finally {
++    reader.releaseLock();
++  }
++}
++
++module.exports = { verifyOllamaChatStream };
+--- /dev/null
++++ b/deploy/intranet/sse-check.test.cjs
+@@ -0,0 +1,55 @@
++'use strict';
++const assert = require('node:assert/strict');
++const test = require('node:test');
++const { verifyOllamaChatStream } = require('./sse-check.cjs');
++const text = 'id: chat_fixture\nevent: text\ndata: "中文 OK"\n\n';
++const stop = 'id: chat_fixture\nevent: stop\ndata: "finished"\n\n';
++function response(source = text + stop, { width = Infinity, contentType = 'text/event-stream; charset=utf-8', status = 200 } = {}) {
++  const bytes = new TextEncoder().encode(source);
++  return new Response(new ReadableStream({ start(controller) {
++    for (let i = 0; i < bytes.length; i += width) controller.enqueue(bytes.slice(i, i + width));
++    controller.close();
++  } }), { headers: { 'content-type': contentType }, status });
++}
++test('actual Ollama text and finished protocol passes regardless of transport chunk boundaries', async () => {
++  for (const width of [1, 2, 7, Infinity]) {
++    const result = await verifyOllamaChatStream(response(text + stop, { width }));
++    assert.equal(result.textEvents, 1);
++    assert.equal(result.completion, 'finished');
++    assert.equal(result.bytes, Buffer.byteLength(text + stop));
++  }
++});
++test('CRLF, comments, blank text chunks and usage metadata are accepted', async () => {
++  const source = ': heartbeat\n\nevent: text\ndata: ""\n\n' + text + stop + 'event: usage\ndata: {}\n\n';
++  assert.equal((await verifyOllamaChatStream(response(source.replaceAll('\n', '\r\n'), {width:1}))).textEvents, 1);
++  let i = 0;
++  const mixed = source.replaceAll('\n', () => ['\r\n', '\n', '\r'][i++ % 3]);
++  assert.equal((await verifyOllamaChatStream(response(mixed, {width:1}))).textEvents, 1);
++});
++test('text-only and incomplete final events cannot pass as a completed stream', async () => {
++  await assert.rejects(verifyOllamaChatStream(response(text)), /before completion/);
++  await assert.rejects(verifyOllamaChatStream(response(text + stop.trimEnd())), /inside an event/);
++});
++test('missing text, malformed text, duplicate completion and post-completion text fail', async () => {
++  for (const source of [stop, 'event: text\ndata: {}\n\n' + stop, text + stop + stop, text + stop + text,
++    text + 'event: stop\ndata: "unexpected"\n\n']) await assert.rejects(verifyOllamaChatStream(response(source)));
++});
++test('SSE error events fail even after generated text or without a data field', async () => {
++  for (const source of [text + 'event: error\ndata: {}\n\n' + stop, text + 'event: error\n\n' + stop])
++    await assert.rejects(verifyOllamaChatStream(response(source)), /reported an error/);
++});
++test('a response must be successful and explicitly use SSE content type', async () => {
++  await assert.rejects(verifyOllamaChatStream(response(undefined, {status:503})), /HTTP 503/);
++  for (const contentType of ['', 'text/plain', 'text/event-stream-malformed'])
++    await assert.rejects(verifyOllamaChatStream(response(undefined, {contentType})), /SSE response/);
++});
++test('stream read errors and invalid UTF-8 fail', async () => {
++  const broken = new Response(new ReadableStream({ start(controller) {controller.error(Error('transport ended'));} }),
++    {headers:{'content-type':'text/event-stream'}});
++  await assert.rejects(verifyOllamaChatStream(broken), /transport ended/);
++  const invalid = new Response(new Uint8Array([255]), {headers:{'content-type':'text/event-stream'}});
++  await assert.rejects(verifyOllamaChatStream(invalid), /encoded data/);
++});
++test('unexpectedly large probe responses fail with bounded memory', async () => {
++  await assert.rejects(verifyOllamaChatStream(response('x'.repeat(1024 * 1024 + 1))), /exceeds 1MiB/);
++});
+--- a/scripts/intranet/network-guard.cjs
++++ b/scripts/intranet/network-guard.cjs
+@@ -8,6 +8,7 @@
+ const dns = require('node:dns');
+ const dgram = require('node:dgram');
+ const http = require('node:http');
++const http2 = require('node:http2');
+ const https = require('node:https');
+ const net = require('node:net');
+ const { syncBuiltinESMExports } = require('node:module');
+@@ -151,6 +152,44 @@
+ wrapRequest(http);
+ wrapRequest(https);
+ 
++// HTTP/2 tunnels use session.request(), not http.request(). Validate a snapshot
++// of the headers so getters cannot change the method between checking and sending.
++// Node 24 accepts both header objects and flat raw-header arrays.
++function checkedHttp2Headers(headers) {
++  if (!headers || typeof headers !== 'object') return headers;
++  const snapshot = Object.assign(Array.isArray(headers) ? [] : Object.create(null), headers);
++  if (Array.isArray(headers)) snapshot.length = headers.length;
++  const checkMethod = (key) => {
++    if (snapshot[key] === undefined) return;
++    const method = String(snapshot[key]);
++    if (method.trim().toUpperCase() === 'CONNECT')
++      throw denied('HTTP/2 CONNECT tunnelling is disabled');
++    snapshot[key] = method;
++  };
++  if (Array.isArray(snapshot)) {
++    for (let index = 0; index < snapshot.length; index += 2) {
++      if (typeof snapshot[index] === 'string' && snapshot[index].toLowerCase() === ':method')
++        checkMethod(index + 1);
++    }
++  } else {
++    for (const key of Object.keys(snapshot)) {
++      if (key.toLowerCase() === ':method') checkMethod(key);
++    }
++  }
++  return snapshot;
++}
++const originalHttp2Connect = http2.connect;
++http2.connect = function (...args) {
++  const session = originalHttp2Connect.apply(this, args);
++  const request = session.request;
++  session.request = function (headers, options) {
++    // Like Node's header validation and our HTTP/1 guard, policy rejection is
++    // synchronous. No stream is created and the session remains usable.
++    return request.call(this, checkedHttp2Headers(headers), options);
++  };
++  return session;
++};
++
+ const originalFetch = globalThis.fetch;
+ if (originalFetch) {
+   globalThis.fetch = async function (input, init) {
+--- a/scripts/intranet/network-guard.test.cjs
++++ b/scripts/intranet/network-guard.test.cjs
+@@ -64,6 +64,7 @@
+ let requests = 0;
+ let h2server;
+ let h2port;
++const h2Methods = [];
+ before(async () => {
+   server = http.createServer((request, response) => {
+     requests += 1;
+@@ -87,7 +88,8 @@
+     socket.on('data', () => socket.end(Buffer.from([0x88, 0x00])));
+   });
+   h2server = http2.createServer();
+-  h2server.on('stream', (stream) => {
++  h2server.on('stream', (stream, headers) => {
++    h2Methods.push(headers[':method']);
+     stream.respond({ ':status': 200 });
+     stream.end('h2 intranet ok');
+   });
+@@ -347,6 +349,53 @@
+   `,
+     `127.0.0.1:${port},127.0.0.1:${h2port}`,
+   );
++});
++
++test('HTTP/2 CONNECT variants never reach the allowed local server and keep the session usable', async () => {
++  const before = h2Methods.length;
++  await succeeds(
++    `
++    const { connect } = await import('node:http2');
++    const session = connect('http://127.0.0.1:${h2port}');
++    const errors = [];
++    session.on('error', error => errors.push(error));
++    for (const headers of [
++      { ':method': 'CONNECT', ':authority': 'forbidden-public.invalid:443' },
++      { ':method': 'connect', ':authority': 'forbidden-public.invalid:443' },
++      { ':method': 'CoNnEcT', ':authority': 'forbidden-public.invalid:443' },
++      { ':METHOD': 'CONNECT', ':authority': 'forbidden-public.invalid:443' },
++      { ':method': ['CONNECT'], ':authority': 'forbidden-public.invalid:443' },
++      { ':method': 'CONNECT', ':protocol': 'websocket', ':path': '/', ':authority': 'forbidden-public.invalid:443' },
++      [':method', 'CONNECT', ':authority', 'forbidden-public.invalid:443'],
++      [':METHOD', 'connect', ':authority', 'forbidden-public.invalid:443'],
++    ]) {
++      assert.throws(() => session.request(headers), { code: '${ERROR_CODE}' });
++      assert.equal(session.destroyed, false);
++      assert.equal(session.closed, false);
++    }
++    let methodReads = 0;
++    const headers = {
++      ':path': '/',
++      get ':method'() { methodReads++; return methodReads === 1 ? 'GET' : 'CONNECT'; },
++    };
++    await new Promise((resolve, reject) => {
++      const request = session.request(headers); let body = '';
++      request.on('data', chunk => body += chunk);
++      request.on('end', () => { assert.equal(body, 'h2 intranet ok'); resolve(); });
++      request.on('error', reject); request.end();
++    });
++    assert.equal(methodReads, 1);
++    await new Promise((resolve, reject) => {
++      const request = session.request([':method', 'GET', ':path', '/']);
++      request.resume(); request.on('end', resolve); request.on('error', reject); request.end();
++    });
++    await new Promise(resolve => session.close(resolve));
++    assert.equal(errors.length, 0);
++    `,
++    `127.0.0.1:${h2port}`,
++  );
++  // The only destination is our local fixture; no public connection is attempted.
++  assert.deepEqual(h2Methods.slice(before), ['GET', 'GET']);
+ });
+ 
+ test('approved TLS connection verifies a local certificate and retains SNI', async (context) => {

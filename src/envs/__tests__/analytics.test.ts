@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe('getAnalyticsConfig', () => {
-  it('should return the correct analytics config', () => {
+  it('forces every analytics provider off despite enabling legacy environment values', () => {
     // 设置环境变量
     process.env.PLAUSIBLE_DOMAIN = 'example.com';
     process.env.POSTHOG_KEY = 'posthog_key';
@@ -30,23 +30,23 @@ describe('getAnalyticsConfig', () => {
     const config = getAnalyticsConfig();
 
     expect(config).toEqual({
-      ENABLED_PLAUSIBLE_ANALYTICS: true,
+      ENABLED_PLAUSIBLE_ANALYTICS: false,
       PLAUSIBLE_DOMAIN: 'example.com',
       PLAUSIBLE_SCRIPT_BASE_URL: 'https://plausible.io',
-      ENABLED_POSTHOG_ANALYTICS: true,
+      ENABLED_POSTHOG_ANALYTICS: false,
       POSTHOG_KEY: 'posthog_key',
       POSTHOG_HOST: 'https://app.posthog.com',
       DEBUG_POSTHOG_ANALYTICS: false,
-      ENABLED_UMAMI_ANALYTICS: true,
+      ENABLED_UMAMI_ANALYTICS: false,
       UMAMI_SCRIPT_URL: 'https://analytics.umami.is/script.js',
       UMAMI_WEBSITE_ID: 'umami_id',
-      ENABLED_CLARITY_ANALYTICS: true,
+      ENABLED_CLARITY_ANALYTICS: false,
       CLARITY_PROJECT_ID: 'clarity_id',
-      ENABLE_VERCEL_ANALYTICS: true,
+      ENABLE_VERCEL_ANALYTICS: false,
       DEBUG_VERCEL_ANALYTICS: false,
-      ENABLE_GOOGLE_ANALYTICS: true,
+      ENABLE_GOOGLE_ANALYTICS: false,
       GOOGLE_ANALYTICS_MEASUREMENT_ID: 'ga_id',
-      ENABLED_X_ADS: true,
+      ENABLED_X_ADS: false,
       X_ADS_PIXEL_ID: 'tw-pixel_id',
       X_ADS_LOGIN_OR_SIGNUP_CLICKED_EVENT_ID: 'tw-pixel_id-login_or_signup_clicked',
       X_ADS_MAIN_PAGE_VIEW_EVENT_ID: 'tw-pixel_id-main_page_view',

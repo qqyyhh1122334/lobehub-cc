@@ -1,0 +1,6 @@
+.env
+certs/
+model-data/
+bundle/
+*.tar
+acceptance-*.json

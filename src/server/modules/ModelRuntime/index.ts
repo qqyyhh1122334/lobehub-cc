@@ -1,10 +1,8 @@
-import { type GoogleGenAIOptions } from '@google/genai';
 import {
   mergeModelRuntimeHooks,
   ModelRuntime,
   type ModelRuntimeHooks,
 } from '@lobechat/model-runtime';
-import { LobeVertexAI } from '@lobechat/model-runtime/vertexai';
 import {
   type AWSBedrockKeyVault,
   type AzureOpenAIKeyVault,
@@ -23,6 +21,7 @@ import { AiProviderModel } from '@/database/models/aiProvider';
 import { type LobeChatDatabase } from '@/database/type';
 import { getLLMConfig } from '@/envs/llm';
 import { createLLMGenerationTracingHook } from '@/server/services/llmGenerationTracing/hook';
+import { assertLocalModelConfiguration } from '@/server/intranet/services';
 
 import { KeyVaultsGateKeeper } from '../KeyVaultsEncrypt';
 import apiKeyManager from './apiKeyManager';
@@ -260,7 +259,7 @@ const getParamsFromPayload = (provider: string, payload: ClientSecretPayload) =>
       } = llmConfig;
 
       // ComfyUI specific handling with environment variables fallback
-      const baseURL = payload?.baseURL || COMFYUI_BASE_URL || 'http://127.0.0.1:8000';
+      const baseURL = payload?.baseURL || COMFYUI_BASE_URL;
 
       // ComfyUI supports multiple auth types: none, basic, bearer, custom
       // Extract all relevant auth fields from the payload or environment
@@ -318,38 +317,6 @@ const getParamsFromPayload = (provider: string, payload: ClientSecretPayload) =>
   }
 };
 
-const buildVertexOptions = (
-  payload: ClientSecretPayload,
-  params: Partial<GoogleGenAIOptions> = {},
-): GoogleGenAIOptions => {
-  const rawCredentials = payload.apiKey || process.env.VERTEXAI_CREDENTIALS || '';
-  const credentials = safeParseJSON<Record<string, string>>(rawCredentials);
-
-  const projectFromParams = params.project as string | undefined;
-  const projectFromCredentials = credentials?.project_id;
-  const projectFromEnv = process.env.VERTEXAI_PROJECT;
-
-  const project = projectFromParams || projectFromCredentials || projectFromEnv;
-  const location =
-    (params.location as string | undefined) ||
-    payload.vertexAIRegion ||
-    process.env.VERTEXAI_LOCATION ||
-    undefined;
-
-  const googleAuthOptions = params.googleAuthOptions || (credentials ? { credentials } : undefined);
-
-  const options: GoogleGenAIOptions = {
-    ...params,
-    vertexai: true,
-  };
-
-  if (googleAuthOptions) options.googleAuthOptions = googleAuthOptions;
-  if (project) options.project = project;
-  if (location) options.location = location as GoogleGenAIOptions['location'];
-
-  return options;
-};
-
 /**
  * Initializes the agent runtime with the user payload in backend
  * @param provider - The provider name.
@@ -365,21 +332,9 @@ export const initModelRuntimeWithUserPayload = (
 ) => {
   const runtimeProvider = payload.runtimeProvider ?? provider;
 
-  if (runtimeProvider === ModelProvider.VertexAI) {
-    const vertexOptions = buildVertexOptions(payload, params);
-    const runtime = LobeVertexAI.initFromVertexAI(vertexOptions);
-
-    return new ModelRuntime(runtime, hooks);
-  }
-
-  return ModelRuntime.initializeWithProvider(
-    runtimeProvider,
-    {
-      ...getParamsFromPayload(runtimeProvider, payload),
-      ...params,
-    },
-    hooks,
-  );
+  const options = { ...getParamsFromPayload(runtimeProvider, payload), ...params };
+  assertLocalModelConfiguration(runtimeProvider, options.baseURL);
+  return ModelRuntime.initializeWithProvider(runtimeProvider, options, hooks);
 };
 
 /**

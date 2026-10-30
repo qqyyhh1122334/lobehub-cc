@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
   <head>
+    <script src="/intranet-browser-guard.js"></script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/favicon.ico" />
@@ -14,18 +15,6 @@
         background-color: #000;
       }
     </style>
-    <script>
-      (function(){
-        var O=globalThis.Worker;
-        globalThis.Worker=function(u,o){
-          var h=typeof u==='string'?u:u instanceof URL?u.href:'';
-          if(h.startsWith('http')&&!h.startsWith(location.origin)){
-            var b=new Blob(['import "'+h+'";'],{type:'application/javascript'});
-            return new O(URL.createObjectURL(b),Object.assign({},o,{type:'module'}));
-          }return new O(u,o)};
-        globalThis.Worker.prototype=O.prototype;
-      })();
-    </script>
     <script>
       (function () {
         var theme = 'system';

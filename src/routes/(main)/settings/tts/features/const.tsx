@@ -31,6 +31,7 @@ export const sttOptions: SelectProps['options'] = [
     value: 'openai',
   },
   {
+    disabled: true,
     label: 'Browser',
     value: 'browser',
   },

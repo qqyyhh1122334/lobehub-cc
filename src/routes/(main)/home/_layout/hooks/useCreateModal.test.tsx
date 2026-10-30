@@ -34,7 +34,7 @@ const chatInputState = vi.hoisted(() => {
   return state;
 });
 
-vi.mock('@lobehub/analytics', () => ({
+vi.mock('@/libs/analytics/intranet', () => ({
   getSingletonAnalyticsOptional: () => ({
     getStatus: () => ({ initialized: true, providersCount: 1 }),
     track: analyticsTrack,

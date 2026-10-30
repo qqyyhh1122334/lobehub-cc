@@ -42,6 +42,34 @@ describe('MCPSystemDepsCheckService', () => {
   });
 
   describe('checkSystemDependency', () => {
+    it.each([
+      'node --version; curl https://example.com',
+      'npx -y malicious-package --version',
+      'pnpm --version',
+      'yarn --version',
+      'python -c "import urllib.request"',
+      'curl https://example.com',
+      '/tmp/custom --version',
+    ])('rejects commands that can download or run arbitrary code: %s', async (checkCommand) => {
+      const result = await mcpSystemDepsCheckService.checkSystemDependency({
+        name: 'node',
+        checkCommand,
+      });
+      expect(result.installed).toBe(false);
+      expect(result.error).toContain('Only local runtime version checks');
+      expect(mockExecPromise).not.toHaveBeenCalled();
+    });
+
+    it('uses executable arguments instead of a shell', async () => {
+      mockExecPromise.mockResolvedValue({ stdout: 'v24.0.0', stderr: '' });
+      await mcpSystemDepsCheckService.checkSystemDependency({ name: 'node' });
+      expect(mockExecPromise).toHaveBeenCalledWith(
+        'node',
+        ['--version'],
+        expect.objectContaining({ timeout: 10_000 }),
+      );
+    });
+
     it('should successfully check installed dependency without version requirement', async () => {
       const mockDependency: SystemDependency = {
         name: 'node',
@@ -142,8 +170,8 @@ describe('MCPSystemDepsCheckService', () => {
 
     it('should check version with <= operator', async () => {
       const mockDependency: SystemDependency = {
-        name: 'tool',
-        checkCommand: 'tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
         requiredVersion: '<=2.0.0',
         versionParsingRequired: true,
       };
@@ -157,8 +185,8 @@ describe('MCPSystemDepsCheckService', () => {
 
     it('should check version with < operator', async () => {
       const mockDependency: SystemDependency = {
-        name: 'tool',
-        checkCommand: 'tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
         requiredVersion: '<2.0.0',
         versionParsingRequired: true,
       };
@@ -172,8 +200,8 @@ describe('MCPSystemDepsCheckService', () => {
 
     it('should check version with = operator (default)', async () => {
       const mockDependency: SystemDependency = {
-        name: 'tool',
-        checkCommand: 'tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
         requiredVersion: '3.0.0',
         versionParsingRequired: true,
       };
@@ -199,8 +227,8 @@ describe('MCPSystemDepsCheckService', () => {
 
     it('should handle stderr without stdout as error', async () => {
       const mockDependency: SystemDependency = {
-        name: 'invalid-tool',
-        checkCommand: 'invalid-tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
       };
 
       mockExecPromise.mockResolvedValue({ stdout: '', stderr: 'command not found' });
@@ -214,8 +242,8 @@ describe('MCPSystemDepsCheckService', () => {
 
     it('should handle command execution error', async () => {
       const mockDependency: SystemDependency = {
-        name: 'missing-tool',
-        checkCommand: 'missing-tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
       };
 
       mockExecPromise.mockRejectedValue(new Error('command not found'));
@@ -229,8 +257,8 @@ describe('MCPSystemDepsCheckService', () => {
 
     it('should handle unknown error types', async () => {
       const mockDependency: SystemDependency = {
-        name: 'tool',
-        checkCommand: 'tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
       };
 
       mockExecPromise.mockRejectedValue('string error');
@@ -278,8 +306,8 @@ describe('MCPSystemDepsCheckService', () => {
       });
 
       const mockDependency: SystemDependency = {
-        name: 'tool',
-        checkCommand: 'tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
         installInstructions: {
           linux_debian: 'apt-get install tool',
           manual: 'Manual install',
@@ -307,8 +335,8 @@ describe('MCPSystemDepsCheckService', () => {
       });
 
       const mockDependency: SystemDependency = {
-        name: 'tool',
-        checkCommand: 'tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
         installInstructions: {
           linux: 'Generic linux install',
           manual: 'Manual install',
@@ -333,8 +361,8 @@ describe('MCPSystemDepsCheckService', () => {
       });
 
       const mockDependency: SystemDependency = {
-        name: 'tool',
-        checkCommand: 'tool --version',
+        name: 'node',
+        checkCommand: 'node --version',
         installInstructions: {
           windows: 'Install via Chocolatey',
           manual: 'Download from website',

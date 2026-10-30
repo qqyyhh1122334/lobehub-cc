@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createEmailServiceImpl,EmailImplType } from './index';
+import { createEmailServiceImpl, EmailImplType } from './index';
 
 vi.mock('./nodemailer', () => ({
   NodemailerImpl: vi.fn().mockImplementation(() => ({
@@ -24,11 +24,9 @@ describe('createEmailServiceImpl', () => {
     expect(impl.sendMail).toBeDefined();
   });
 
-  it('should fall back to NodemailerImpl for unknown type', () => {
-    const impl = createEmailServiceImpl('unknown' as EmailImplType);
-
-    expect(impl).toBeDefined();
-    expect(impl.sendMail).toBeDefined();
+  it('rejects removed or unknown cloud providers instead of silently falling back', () => {
+    expect(() => createEmailServiceImpl('resend' as EmailImplType)).toThrow(/Only internal SMTP/);
+    expect(() => createEmailServiceImpl('unknown' as EmailImplType)).toThrow(/Only internal SMTP/);
   });
 });
 

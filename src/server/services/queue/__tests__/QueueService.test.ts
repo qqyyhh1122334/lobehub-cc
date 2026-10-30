@@ -12,12 +12,15 @@ vi.mock('@/envs/app', () => ({
 
 describe('QueueService', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.resetModules();
     // Reset to default local mode
     mockAppEnv.enableQueueAgentRuntime = false;
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -46,7 +49,7 @@ describe('QueueService', () => {
         stepIndex: 0,
       });
 
-      expect(taskId).toMatch(/^local-test-op-0-\d+$/);
+      expect(taskId).toMatch(/^local-test-op-0-\d+-\d+$/);
     });
 
     it('should schedule batch messages in local mode', async () => {
@@ -71,15 +74,15 @@ describe('QueueService', () => {
       ]);
 
       expect(taskIds).toHaveLength(2);
-      expect(taskIds[0]).toMatch(/^local-test-op-1-0-\d+$/);
-      expect(taskIds[1]).toMatch(/^local-test-op-2-0-\d+$/);
+      expect(taskIds[0]).toMatch(/^local-test-op-1-0-\d+-\d+$/);
+      expect(taskIds[1]).toMatch(/^local-test-op-2-0-\d+-\d+$/);
     });
 
-    it('should handle cancelScheduledTask gracefully in local mode (no-op)', async () => {
+    it('should accept cancellation of an unknown local task', async () => {
       const { QueueService } = await import('../QueueService');
       const service = new QueueService();
 
-      // Should not throw, just logs a warning
+      // Cancelling an unknown or already completed task is idempotent.
       await expect(service.cancelScheduledTask('task-123')).resolves.toBeUndefined();
     });
 
@@ -96,69 +99,33 @@ describe('QueueService', () => {
       });
     });
 
-    it('should return healthy status for healthCheck in local mode', async () => {
+    it('should report unready until an execution callback is registered', async () => {
       const { QueueService } = await import('../QueueService');
       const service = new QueueService();
 
       const result = await service.healthCheck();
       expect(result).toEqual({
-        healthy: true,
-        message: 'Local queue service healthy, 0 pending executions',
+        healthy: false,
+        message: 'Local queue execution callback is not registered',
       });
     });
   });
 
-  describe('Queue Mode (AGENT_RUNTIME_MODE=queue)', () => {
-    it('should throw error when QSTASH_TOKEN is not set', async () => {
+  describe('Legacy cloud configuration cannot enable QStash', () => {
+    it('always creates an in-process queue even if a legacy token is present', async () => {
       mockAppEnv.enableQueueAgentRuntime = true;
-      delete process.env.QSTASH_TOKEN;
-
-      const { createQueueServiceModule } = await import('../impls');
-
-      expect(() => createQueueServiceModule()).toThrow(
-        'QSTASH_TOKEN is required when AGENT_RUNTIME_MODE=queue',
-      );
-    });
-
-    it('should create QStashQueueServiceImpl when QSTASH_TOKEN is set', async () => {
-      mockAppEnv.enableQueueAgentRuntime = true;
-      process.env.QSTASH_TOKEN = 'test-qstash-token';
-
-      const { createQueueServiceModule } = await import('../impls');
-      const impl = createQueueServiceModule();
-
-      expect(impl).not.toBeNull();
-      expect(impl?.constructor.name).toBe('QStashQueueServiceImpl');
-
-      // Cleanup
-      delete process.env.QSTASH_TOKEN;
-    });
-
-    it('should return false for isLocalExecution when in queue mode', async () => {
-      mockAppEnv.enableQueueAgentRuntime = true;
-      process.env.QSTASH_TOKEN = 'test-qstash-token';
-
-      const { QueueService } = await import('../QueueService');
-      const service = new QueueService();
-
-      expect(service.isLocalExecution()).toBe(false);
-
-      // Cleanup
-      delete process.env.QSTASH_TOKEN;
-    });
-  });
-
-  describe('isQueueAgentRuntimeEnabled', () => {
-    it('should return false when enableQueueAgentRuntime is false', async () => {
-      mockAppEnv.enableQueueAgentRuntime = false;
-      const { isQueueAgentRuntimeEnabled } = await import('../impls');
-      expect(isQueueAgentRuntimeEnabled()).toBe(false);
-    });
-
-    it('should return true when enableQueueAgentRuntime is true', async () => {
-      mockAppEnv.enableQueueAgentRuntime = true;
-      const { isQueueAgentRuntimeEnabled } = await import('../impls');
-      expect(isQueueAgentRuntimeEnabled()).toBe(true);
+      vi.stubEnv('QSTASH_TOKEN', 'legacy-key');
+      vi.stubEnv('AGENT_RUNTIME_MODE', 'queue');
+      try {
+        const { createQueueServiceModule, LocalQueueServiceImpl, isQueueAgentRuntimeEnabled } =
+          await import('../impls');
+        expect(createQueueServiceModule()).toBeInstanceOf(LocalQueueServiceImpl);
+        expect(isQueueAgentRuntimeEnabled()).toBe(false);
+        const { QueueService } = await import('../QueueService');
+        expect(new QueueService().isLocalExecution()).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
   });
 

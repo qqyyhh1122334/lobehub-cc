@@ -6,7 +6,8 @@ import { Ollama } from 'ollama/browser';
 import type { ClientOptions } from 'openai';
 
 import type { LobeRuntimeAI } from '../../core/BaseAI';
-import { convertIterableToStream, createModelPullStream, OllamaStream } from '../../core/streams';
+import { OllamaStream } from '../../core/streams/ollama';
+import { convertIterableToStream } from '../../core/streams/protocol';
 import type {
   ChatMethodOptions,
   ChatStreamPayload,
@@ -19,7 +20,6 @@ import type {
 import { AgentRuntimeErrorType } from '../../types/error';
 import { AgentRuntimeError } from '../../utils/createError';
 import { debugStream } from '../../utils/debugStream';
-import { createErrorResponse } from '../../utils/errorResponse';
 import { StreamingResponse } from '../../utils/response';
 import { parseDataUri } from '../../utils/uriParser';
 import type { OllamaMessage } from './type';
@@ -229,83 +229,10 @@ export class LobeOllamaAI implements LobeRuntimeAI {
     return ollamaMessage;
   };
 
-  async pullModel(params: PullModelParams, options?: ModelRequestOptions): Promise<Response> {
-    const { model, insecure } = params;
-    const signal = options?.signal; // Get the passed-in AbortSignal
-
-    const abortOllama = () => {
-      // Assume this.client.abort() is idempotent or can be safely called multiple times
-      this.client.abort();
-    };
-
-    // If an AbortSignal is present, listen for the abort event
-    // Use { once: true } to ensure the listener only fires once
-    signal?.addEventListener('abort', abortOllama, { once: true });
-
-    try {
-      // Get the iterable for the Ollama pull operation
-      const iterable = await this.client.pull({
-        insecure: insecure ?? false,
-        model,
-        stream: true,
-      });
-
-      // Use the dedicated model download stream conversion method
-      const progressStream = createModelPullStream(iterable, model, {
-        onCancel: () => {
-          // When the stream is cancelled, call abortOllama
-          // Remove the signal's event listener to avoid duplicate calls (if abortOllama is not idempotent)
-          signal?.removeEventListener('abort', abortOllama);
-          abortOllama(); // Execute the abort logic
-        },
-      });
-
-      // Return the standard response
-      return new Response(progressStream, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      // If an error occurs during the initial call to client.pull or stream creation, remove the listener
-      signal?.removeEventListener('abort', abortOllama);
-
-      // Handle errors
-      if ((error as Error).message === 'fetch failed') {
-        return createErrorResponse(AgentRuntimeErrorType.OllamaServiceUnavailable, {
-          message: 'please check whether your ollama service is available',
-          provider: ModelProvider.Ollama,
-        });
-      }
-
-      console.error('model download error:', error);
-
-      // Check if the operation was cancelled
-      if ((error as Error).name === 'AbortError') {
-        return new Response(
-          JSON.stringify({
-            model,
-            status: 'cancelled',
-          }),
-          {
-            headers: { 'Content-Type': 'application/json' },
-            status: 499,
-          },
-        );
-      }
-
-      // Return an error response
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return new Response(
-        JSON.stringify({
-          error: errorMessage,
-          model,
-          status: 'error',
-        }),
-        {
-          headers: { 'Content-Type': 'application/json' },
-          status: 500,
-        },
-      );
-    }
+  async pullModel(_params: PullModelParams, _options?: ModelRequestOptions): Promise<Response> {
+    throw new Error(
+      'Runtime model downloads are disabled in the intranet edition. Import approved model weights before deployment.',
+    );
   }
 }
 

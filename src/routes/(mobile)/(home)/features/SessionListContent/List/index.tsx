@@ -1,4 +1,4 @@
-import { useAnalytics } from '@lobehub/analytics/react';
+import { useAnalytics } from '@/libs/analytics/intranet';
 import { createStaticStyles } from 'antd-style';
 import { memo } from 'react';
 import LazyLoad from 'react-lazy-load';

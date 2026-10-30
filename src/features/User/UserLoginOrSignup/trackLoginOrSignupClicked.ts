@@ -1,4 +1,4 @@
-import { getSingletonAnalyticsOptional } from '@lobehub/analytics';
+import { getSingletonAnalyticsOptional } from '@/libs/analytics/intranet';
 
 interface TrackLoginOrSignupClickedParams {
   provider?: string;

@@ -1,12 +1,6 @@
-import { discord } from './discord';
 import { MessengerPlatformRegistry } from './registry';
-import { slack } from './slack';
-import { telegram } from './telegram';
 
-export { MessengerDiscordBinder } from './discord';
 export { MessengerPlatformRegistry } from './registry';
-export { MessengerSlackBinder, slackWebhookGate } from './slack';
-export { MessengerTelegramBinder } from './telegram';
 export type {
   MessengerPlatformDefinition,
   MessengerPlatformWebhookGate,
@@ -14,11 +8,6 @@ export type {
   SerializedMessengerPlatformDefinition,
 } from './types';
 
-/**
- * Singleton registry — one per process. Each platform definition lives
- * alongside its binder + (optional) webhook gate, mirroring `bot/platforms/`.
- */
-export const messengerPlatformRegistry = new MessengerPlatformRegistry()
-  .register(slack)
-  .register(telegram)
-  .register(discord);
+// This edition has no cloud messenger adapters. Do not import or re-export
+// their definitions or binders: importing the registry must remain offline.
+export const messengerPlatformRegistry = new MessengerPlatformRegistry();

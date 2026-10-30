@@ -7,6 +7,7 @@ import { AgentModel } from '@/database/models/agent';
 import { BriefModel } from '@/database/models/brief';
 import { TaskModel } from '@/database/models/task';
 import { TaskTopicModel } from '@/database/models/taskTopic';
+import { assertTaskAutomationAvailable } from '@/libs/intranet/taskPolicy';
 import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { TaskService } from '@/server/services/task';
@@ -889,6 +890,12 @@ export const taskRouter = router({
     }),
 
   update: taskProcedure.input(idInput.merge(updateSchema)).mutation(async ({ input, ctx }) => {
+    assertTaskAutomationAvailable(input);
+    // Converting a migrated cron task must remove its stale cron fields.
+    if (input.automationMode !== undefined && input.automationMode !== 'schedule') {
+      input.schedulePattern = null;
+      input.scheduleTimezone = null;
+    }
     const { id, parentTaskId, ...data } = input;
     try {
       const model = ctx.taskModel;

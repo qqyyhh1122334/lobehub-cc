@@ -49,23 +49,6 @@ vi.mock('better-auth/plugins', () => ({
   magicLink: vi.fn(() => ({ id: 'magic-link' })),
 }));
 
-vi.mock('better-auth-harmony', () => ({
-  emailHarmony: vi.fn(() => ({ id: 'email-harmony' })),
-}));
-
-vi.mock('better-auth-harmony/email', () => ({
-  validateEmail: vi.fn(),
-}));
-
-vi.mock('undici', () => ({
-  ProxyAgent: vi.fn(),
-  setGlobalDispatcher: vi.fn(),
-}));
-
-vi.mock('@/business/server/better-auth', () => ({
-  businessEmailValidator: vi.fn(),
-}));
-
 vi.mock('@/envs/app', () => ({
   appEnv: {
     APP_URL: 'https://example.com',

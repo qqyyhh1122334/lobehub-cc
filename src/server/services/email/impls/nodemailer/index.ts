@@ -19,19 +19,24 @@ export class NodemailerImpl implements EmailServiceImpl {
   constructor() {
     log('Initializing Nodemailer from environment variables');
 
-    if (!emailEnv.SMTP_USER || !emailEnv.SMTP_PASS) {
+    if (!emailEnv.SMTP_HOST || !emailEnv.SMTP_FROM) {
       throw new Error(
-        'SMTP_USER and SMTP_PASS environment variables are required to use email service. Please configure SMTP settings in your .env file.',
+        'SMTP_HOST and SMTP_FROM are required for an explicitly configured internal SMTP server.',
       );
     }
 
-    // Note: Use || to handle empty string from Dockerfile defaults
+    if (!!emailEnv.SMTP_USER !== !!emailEnv.SMTP_PASS) {
+      throw new Error('SMTP_USER and SMTP_PASS must be configured together');
+    }
+
+    // SMTP relays on isolated networks may intentionally use no authentication.
     const transportConfig: NodemailerConfig = {
-      auth: {
-        pass: emailEnv.SMTP_PASS,
-        user: emailEnv.SMTP_USER,
-      },
-      host: emailEnv.SMTP_HOST || 'localhost',
+      auth:
+        emailEnv.SMTP_USER && emailEnv.SMTP_PASS
+          ? { pass: emailEnv.SMTP_PASS, user: emailEnv.SMTP_USER }
+          : undefined,
+      disableUrlAccess: true,
+      host: emailEnv.SMTP_HOST,
       port: emailEnv.SMTP_PORT || 587,
       secure: emailEnv.SMTP_SECURE || false,
     };

@@ -1,43 +1,19 @@
 'use client';
-
 import { Flexbox } from '@lobehub/ui';
-import { css, cx } from 'antd-style';
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 
-const container = css`
-  position: relative;
-  overflow: hidden;
-  border-radius: 4px;
-`;
-
-const content = css`
-  position: absolute;
-  inset-block: -1px;
-  inset-inline-start: -1px;
-
-  width: calc(100% + 2px);
-  height: calc(100% + 2px);
-  border: 0;
-`;
-
-interface MSDocViewerProps {
-  fileId: string;
-  url: string | null;
-}
-
-const MSDocViewer = memo<MSDocViewerProps>(({ url }) => {
+/** Office Online would disclose the document URL to an Internet service. */
+const MSDocViewer = memo<{ fileId: string; url: string | null }>(({ url }) => {
+  const { t } = useTranslation('common');
   if (!url) return null;
-
   return (
-    <Flexbox className={cx(container)} height={'100%'} id="msdoc-renderer" width={'100%'}>
-      <iframe
-        className={cx(content)}
-        id="msdoc-iframe"
-        src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
-        title="msdoc-iframe"
-      />
+    <Flexbox gap={12} padding={16}>
+      <p>{t('intranet.officePreview')}</p>
+      <a download href={url}>
+        {t('intranet.downloadDocument')}
+      </a>
     </Flexbox>
   );
 });
-
 export default MSDocViewer;

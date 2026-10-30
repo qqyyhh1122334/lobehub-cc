@@ -332,7 +332,7 @@ async function loadAttachmentBuffer(
   }
   if (typeof attachment.fetchData === 'function') {
     try {
-      return await attachment.fetchData();
+      return await blobOrBufferToBuffer(await attachment.fetchData());
     } catch (error) {
       logger?.warn?.('Attachment fetchData failed: %s', error);
     }

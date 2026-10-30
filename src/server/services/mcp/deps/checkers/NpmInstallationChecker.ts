@@ -1,50 +1,53 @@
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { type InstallationChecker, type PackageInstallCheckResult } from '../types';
+import type { InstallationChecker, PackageInstallCheckResult } from '../types';
 
-const execPromise = promisify(exec);
+const execFilePromise = promisify(execFile);
+const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i;
 
-/**
- * NPM Installation Checker
- */
+/** Inspect installed metadata only. Never download or execute an MCP package. */
 export class NpmInstallationChecker implements InstallationChecker {
-  /**
-   * Check if npm package is installed
-   */
   async checkPackageInstalled(details: {
     packageName?: string;
   }): Promise<PackageInstallCheckResult> {
-    if (!details.packageName) {
+    const packageName = details.packageName || '';
+    if (!PACKAGE_NAME.test(packageName)) {
       return {
-        error: 'Package name not provided',
+        error: packageName ? 'Invalid npm package name' : 'Package name not provided',
         installed: false,
-        packageName: '',
+        packageName,
       };
     }
 
     try {
-      const packageName = details.packageName;
-      // Use npm list to check if package is globally installed
-      const { stdout: globalStdout } = await execPromise(`npm list -g ${packageName} --depth=0`);
-      if (!globalStdout.includes('(empty)') && globalStdout.includes(packageName)) {
-        return {
-          installed: true,
-          packageName,
-        };
-      }
-
-      // Check if package can be used directly via npx (which also verifies if package is available)
-      await execPromise(`npx -y ${packageName} --version`);
-      return {
-        installed: true,
-        packageName,
+      const { stdout } = await execFilePromise(
+        'npm',
+        [
+          'ls',
+          '--global',
+          '--json',
+          '--depth=0',
+          '--offline',
+          '--ignore-scripts',
+          '--no-update-notifier',
+          '--no-audit',
+          '--no-fund',
+        ],
+        { maxBuffer: 1024 * 1024, timeout: 10_000 },
+      );
+      const result = JSON.parse(stdout) as {
+        dependencies?: Record<string, { missing?: boolean; version?: string }>;
       };
+      const dependency = Object.hasOwn(result.dependencies || {}, packageName)
+        ? result.dependencies?.[packageName]
+        : undefined;
+      return { installed: !!dependency?.version && !dependency.missing, packageName };
     } catch (error) {
       return {
         error: error instanceof Error ? error.message : 'Unknown error',
         installed: false,
-        packageName: details.packageName,
+        packageName,
       };
     }
   }

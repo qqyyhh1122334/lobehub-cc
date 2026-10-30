@@ -1,0 +1,266 @@
+name: lobehub-intranet
+
+x-no-proxy: &no-proxy
+  HTTP_PROXY: ''
+  HTTPS_PROXY: ''
+  ALL_PROXY: ''
+  http_proxy: ''
+  https_proxy: ''
+  all_proxy: ''
+  NO_PROXY: '*'
+  no_proxy: '*'
+
+x-isolated: &isolated
+  pull_policy: never
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+
+services:
+  # Only this container can change firewall rules. App and nginx share its
+  # network namespace but do not receive NET_ADMIN or the Docker socket.
+  network-policy:
+    <<: *isolated
+    image: lobehub-intranet-firewall:049c81d
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, NET_RAW]
+    read_only: true
+    tmpfs: [/run]
+    environment: *no-proxy
+    dns: [172.30.90.53]
+    networks:
+      ingress: {}
+      backend:
+        ipv4_address: 172.30.90.2
+    ports:
+      - '${BIND_IP:-127.0.0.1}:8443:8443'
+    healthcheck:
+      test: [CMD, /bin/sh, /policy/check.sh]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  nginx:
+    <<: *isolated
+    image: ${NGINX_IMAGE:-nginx:1.27.4-alpine}
+    network_mode: service:network-policy
+    depends_on:
+      network-policy:
+        condition: service_healthy
+    cap_drop: [ALL]
+    user: '101:101'
+    read_only: true
+    tmpfs: [/tmp]
+    environment: *no-proxy
+    entrypoint: [nginx, -g, 'daemon off;']
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs/cert.pem:/certs/cert.pem:ro
+      - ./certs/key.pem:/certs/key.pem:ro
+
+  app:
+    <<: *isolated
+    image: lobehub-intranet:049c81d
+    network_mode: service:network-policy
+    depends_on:
+      network-policy:
+        condition: service_healthy
+      nginx:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      storage:
+        condition: service_started
+      model:
+        condition: service_started
+    cap_drop: [ALL]
+    user: '1000:1000'
+    read_only: true
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=1770
+      - /app/.next/cache:uid=1000,gid=1000,mode=0700
+    volumes:
+      - ./certs/ca.pem:/certs/ca.pem:ro
+      - ./resolv.conf:/etc/resolv.conf:ro
+    environment:
+      <<: *no-proxy
+      NODE_ENV: production
+      HOSTNAME: 127.0.0.1
+      PORT: '3210'
+      NODE_OPTIONS: --require=/app/scripts/intranet/network-guard.cjs
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+      NEXT_TELEMETRY_DISABLED: '1'
+      LOBE_INTRANET_ALLOWED_ENDPOINTS: '127.0.0.1:3210,localhost:3210,127.0.0.1:8443,${LOBE_HOST}:8443,172.30.90.10:5432,172.30.90.11:6379,172.30.90.12:9000,172.30.90.13:11434'
+      APP_URL: 'https://${LOBE_HOST}:8443'
+      INTERNAL_APP_URL: http://127.0.0.1:3210
+      MIDDLEWARE_REWRITE_THROUGH_LOCAL: '1'
+      AUTH_SECRET: ${AUTH_SECRET:?Run configure.mjs first}
+      KEY_VAULTS_SECRET: ${KEY_VAULTS_SECRET:?Run configure.mjs first}
+      AUTH_SSO_PROVIDERS: ''
+      AUTH_DISABLE_EMAIL_PASSWORD: '0'
+      AUTH_EMAIL_VERIFICATION: '0'
+      AUTH_ENABLE_MAGIC_LINK: '0'
+      AUTH_ALLOWED_EMAILS: ${AUTH_ALLOWED_EMAILS:?Configure allowed account emails}
+      AUTH_TRUSTED_ORIGINS: 'https://${LOBE_HOST}:8443'
+      DATABASE_DRIVER: node
+      DATABASE_URL: 'postgresql://postgres:${POSTGRES_PASSWORD:?Run configure.mjs first}@172.30.90.10:5432/lobehub'
+      REDIS_URL: redis://172.30.90.11:6379
+      REDIS_PREFIX: lobehub-intranet
+      REDIS_TLS: '0'
+      # The browser and server use the same signed host/path. nginx forwards
+      # /lobehub-files/ without rewriting it, preserving AWS SigV4 signatures.
+      S3_ENDPOINT: 'https://${LOBE_HOST}:8443'
+      S3_BUCKET: lobehub-files
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?Run configure.mjs first}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?Run configure.mjs first}
+      S3_REGION: us-east-1
+      S3_ENABLE_PATH_STYLE: '1'
+      S3_SET_ACL: '0'
+      LLM_VISION_IMAGE_USE_BASE64: '1'
+      SSRF_ALLOW_PRIVATE_IP_ADDRESS: '1'
+      ENABLED_OPENAI: '0'
+      ENABLED_OLLAMA: '1'
+      OLLAMA_PROXY_URL: http://172.30.90.13:11434
+      OLLAMA_MODEL_LIST: ${OLLAMA_MODEL_LIST:?Select a model already in model-data}
+      FEATURE_FLAGS: '-market,-community,-ai_image,-ai_video'
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          'fetch("http://127.0.0.1:3210/signin").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))',
+        ]
+      interval: 15s
+      timeout: 10s
+      start_period: 180s
+      retries: 10
+
+  postgres:
+    <<: *isolated
+    # 049c81d requires BOTH vector and pg_search (migration 0090).
+    # Export locks the selected upstream image to its immutable local image ID.
+    image: ${POSTGRES_IMAGE:-paradedb/paradedb:latest-pg17}
+    environment:
+      <<: *no-proxy
+      POSTGRES_DB: lobehub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run configure.mjs first}
+    dns: [172.30.90.53]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks:
+      backend:
+        ipv4_address: 172.30.90.10
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d lobehub']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    <<: *isolated
+    image: ${REDIS_IMAGE:-redis:7.4.2-alpine}
+    cap_drop: [ALL]
+    user: '999:999'
+    depends_on:
+      storage-permissions:
+        condition: service_completed_successfully
+    command: [redis-server, --appendonly, 'yes', --protected-mode, 'no']
+    environment: *no-proxy
+    dns: [172.30.90.53]
+    volumes: [redis-data:/data]
+    networks:
+      backend:
+        ipv4_address: 172.30.90.11
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  storage:
+    <<: *isolated
+    image: ${STORAGE_IMAGE:-minio/minio:RELEASE.2025-04-22T22-12-26Z}
+    command: [server, /data, --console-address, ':9001']
+    cap_drop: [ALL]
+    user: '1000:1000'
+    depends_on:
+      storage-permissions:
+        condition: service_completed_successfully
+    environment:
+      <<: *no-proxy
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?Run configure.mjs first}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?Run configure.mjs first}
+      MINIO_BROWSER: 'off'
+      MINIO_UPDATE: 'off'
+    dns: [172.30.90.53]
+    volumes: [storage-data:/data]
+    networks:
+      backend:
+        ipv4_address: 172.30.90.12
+
+  storage-permissions:
+    image: lobehub-intranet:049c81d
+    pull_policy: never
+    network_mode: none
+    user: '0:0'
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    entrypoint: [node, /permissions.cjs]
+    volumes:
+      - storage-data:/data
+      - redis-data:/redis-data
+      - ./model-data:/models
+      - ./permissions.cjs:/permissions.cjs:ro
+    restart: 'no'
+
+  model:
+    <<: *isolated
+    image: ${MODEL_IMAGE:-ollama/ollama:0.6.6}
+    cap_drop: [ALL]
+    user: '1000:1000'
+    depends_on:
+      storage-permissions:
+        condition: service_completed_successfully
+    environment:
+      <<: *no-proxy
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NOHISTORY: '1'
+      OLLAMA_NO_CLOUD: 'true'
+      HOME: /models
+      OLLAMA_MODELS: /models/models
+    dns: [172.30.90.53]
+    volumes: ['./model-data:/models']
+    networks:
+      backend:
+        ipv4_address: 172.30.90.13
+
+  dns:
+    <<: *isolated
+    image: ${DNS_IMAGE:-coredns/coredns:1.12.0}
+    command: [-conf, /etc/coredns/Corefile]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    environment: *no-proxy
+    volumes: ['./Corefile:/etc/coredns/Corefile:ro']
+    networks:
+      backend:
+        ipv4_address: 172.30.90.53
+
+networks:
+  ingress:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 172.30.90.0/24
+
+volumes:
+  postgres-data:
+  redis-data:
+  storage-data:

@@ -1,4 +1,5 @@
 import { isDesktop } from '@lobechat/const';
+import { CURRENT_VERSION } from '@/const/version';
 import { type PartialDeep } from 'type-fest';
 
 import { type VersionResponseData } from '@/app/(backend)/api/version/route';
@@ -9,7 +10,6 @@ import { electronSyncSelectors } from '@/store/electron/selectors';
 import { type LobeAgentConfig } from '@/types/agent';
 import { type GlobalRuntimeConfig } from '@/types/serverConfig';
 
-const VERSION_URL = 'https://registry.npmmirror.com/@lobehub/chat/latest';
 const SERVER_VERSION_URL = '/api/version';
 
 class GlobalService extends BusinessGlobalService {
@@ -17,10 +17,8 @@ class GlobalService extends BusinessGlobalService {
    * get latest version from npm
    */
   getLatestVersion = async (): Promise<string> => {
-    const res = await fetch(VERSION_URL);
-    const data = await res.json();
-
-    return data['version'];
+    // Updates are imported and reviewed by the administrator offline.
+    return CURRENT_VERSION;
   };
 
   /**

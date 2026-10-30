@@ -197,45 +197,12 @@ describe('aiProviderSelectors', () => {
   });
 
   describe('isProviderFetchOnClient', () => {
-    it('should return false if provider is in disable browser request list', () => {
-      expect(
-        aiProviderSelectors.isProviderFetchOnClient('provider-with-disabled-browser')(mockState),
-      ).toBe(false);
-    });
-
-    it('should follow user settings for whitelisted providers', () => {
-      expect(aiProviderSelectors.isProviderFetchOnClient('ollama')(mockState)).toBe(true);
-    });
-
-    it('should return false if no endpoint and api key', () => {
-      const state = {
-        ...mockState,
-        aiProviderRuntimeConfig: {
-          test: {
-            keyVaults: {},
-            settings: {},
-          },
-        },
-      };
-      expect(aiProviderSelectors.isProviderFetchOnClient('test')(state)).toBe(false);
-    });
-
-    it('should return true if only baseURL exists', () => {
-      const state = {
-        ...mockState,
-        aiProviderRuntimeConfig: {
-          test: {
-            keyVaults: { baseURL: 'http://test.com' },
-            settings: {},
-          },
-        },
-      };
-      expect(aiProviderSelectors.isProviderFetchOnClient('test')(state)).toBe(true);
-    });
-
-    it('should follow user settings if both endpoint and api key exist', () => {
-      expect(aiProviderSelectors.isProviderFetchOnClient('provider1')(mockState)).toBe(true);
-    });
+    it.each(['ollama', 'lmstudio', 'provider1', 'provider2', 'unknown'])(
+      'always proxies %s through the protected server despite imported browser settings',
+      (provider) => {
+        expect(aiProviderSelectors.isProviderFetchOnClient(provider)(mockState)).toBe(false);
+      },
+    );
   });
 
   describe('providerKeyVaults', () => {

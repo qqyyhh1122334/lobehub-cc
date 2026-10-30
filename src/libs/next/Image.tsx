@@ -1,3 +1,4 @@
+import { isIntranetNavigation } from '@/security/intranet/url';
 /**
  * Image adapter — replaces next/image with a plain <img> element.
  * Preserves the most common Next.js Image props for API compat.
@@ -32,7 +33,11 @@ const Image = ({
   style,
   ...rest
 }: ImageProps & { ref?: React.RefObject<HTMLImageElement | null> }) => {
-  const resolvedSrc = typeof src === 'string' ? src : src.src;
+  const candidate = typeof src === 'string' ? src : src.src;
+  const resolvedSrc =
+    candidate.startsWith('data:image/') || isIntranetNavigation(candidate)
+      ? candidate
+      : '/favicon.ico';
 
   const fillStyle: CSSProperties | undefined = fill
     ? { height: '100%', left: 0, objectFit: 'cover', position: 'absolute', top: 0, width: '100%' }

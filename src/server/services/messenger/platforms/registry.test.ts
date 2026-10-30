@@ -76,9 +76,9 @@ describe('MessengerPlatformRegistry', () => {
 });
 
 describe('messengerPlatformRegistry singleton', () => {
-  it('registers slack, telegram, and discord on import', async () => {
+  it('has no cloud platforms registered in the intranet edition', async () => {
     const { messengerPlatformRegistry } = await import('./index');
     const ids = messengerPlatformRegistry.listPlatforms().map((d) => d.id);
-    expect(ids).toEqual(expect.arrayContaining(['slack', 'telegram', 'discord']));
+    expect(ids).toEqual([]);
   });
 });

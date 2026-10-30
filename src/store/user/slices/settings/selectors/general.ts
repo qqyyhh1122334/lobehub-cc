@@ -3,11 +3,15 @@ import { isDesktop } from '@lobechat/const';
 import { DEFAULT_LANG } from '@/const/locale';
 import { type Locales, normalizeLocale } from '@/locales/resources';
 import { isOnServerSide } from '@/utils/env';
+import { normalizeMermaidTheme } from '@/utils/mermaidTheme';
 
 import { type UserStore } from '../../../store';
 import { currentSettings } from './settings';
 
-const generalConfig = (s: UserStore) => currentSettings(s).general || {};
+const generalConfig = (s: UserStore) => {
+  const config = currentSettings(s).general || {};
+  return { ...config, mermaidTheme: normalizeMermaidTheme(config.mermaidTheme) };
+};
 
 const neutralColor = (s: UserStore) => generalConfig(s).neutralColor;
 const primaryColor = (s: UserStore) => generalConfig(s).primaryColor;

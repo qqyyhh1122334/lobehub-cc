@@ -1,68 +1,50 @@
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { type InstallationChecker, type PackageInstallCheckResult } from '../types';
+import type { InstallationChecker, PackageInstallCheckResult } from '../types';
 
-const execPromise = promisify(exec);
+const execFilePromise = promisify(execFile);
+const PACKAGE_NAME = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/i;
+const PYTHON_COMMAND = /^python(?:3(?:\.\d+)?)?$/;
 
-/**
- * Python Installation Checker
- */
+// -I -S disables user paths, sitecustomize and executable .pth startup hooks.
+// Inspect distribution metadata without importing package code or invoking pip.
+const CHECK_DISTRIBUTION = [
+  'import importlib.metadata, re, sys, sysconfig',
+  'normalize = lambda name: re.sub(r"[-_.]+", "-", name).lower()',
+  'paths = sysconfig.get_paths()',
+  'distributions = importlib.metadata.distributions(path=[paths["purelib"], paths["platlib"]])',
+  'print("installed" if any(normalize(d.metadata.get("Name", "")) == normalize(sys.argv[1]) for d in distributions) else "missing")',
+].join('\n');
+
 export class PythonInstallationChecker implements InstallationChecker {
-  /**
-   * Check if Python package is installed
-   */
   async checkPackageInstalled(details: {
     packageName?: string;
     pythonCommand?: string;
   }): Promise<PackageInstallCheckResult> {
-    if (!details.packageName) {
+    const packageName = details.packageName || '';
+    const pythonCommand = details.pythonCommand || 'python';
+
+    if (!PACKAGE_NAME.test(packageName) || !PYTHON_COMMAND.test(pythonCommand)) {
       return {
-        error: 'Package name not provided',
+        error: !packageName ? 'Package name not provided' : 'Invalid Python package or command',
         installed: false,
-        packageName: '',
+        packageName,
       };
     }
 
     try {
-      const packageName = details.packageName;
-      const pythonCommand = details.pythonCommand || 'python';
-
-      // Use pip list to check if package is installed
-      const command = `${pythonCommand} -m pip list | grep -i "${packageName}"`;
-      const { stdout } = await execPromise(command);
-
-      // If there's output and it contains the package name, consider it installed
-      if (stdout.trim() && stdout.toLowerCase().includes(packageName.toLowerCase())) {
-        return {
-          installed: true,
-          packageName,
-        };
-      }
-
-      // Try to directly import the package to verify
-      const importCommand = `${pythonCommand} -c "import ${packageName.replace('-', '_')}; print('Package installed')"`;
-      try {
-        const { stdout: importStdout } = await execPromise(importCommand);
-        if (importStdout.includes('Package installed')) {
-          return {
-            installed: true,
-            packageName,
-          };
-        }
-      } catch {
-        // Import failed, package may not exist
-      }
-
-      return {
-        installed: false,
-        packageName,
-      };
+      const { stdout } = await execFilePromise(
+        pythonCommand,
+        ['-I', '-S', '-c', CHECK_DISTRIBUTION, packageName],
+        { maxBuffer: 1024 * 1024, timeout: 10_000 },
+      );
+      return { installed: stdout.trim() === 'installed', packageName };
     } catch (error) {
       return {
         error: error instanceof Error ? error.message : 'Unknown error',
         installed: false,
-        packageName: details.packageName,
+        packageName,
       };
     }
   }

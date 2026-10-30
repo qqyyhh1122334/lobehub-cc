@@ -14,13 +14,8 @@ export class DocLoader implements FileLoaderInterface {
     log('Loading DOC file:', filePath);
     try {
       const extractor = new WordExtractor();
-      const extracted: any = await extractor.extract(filePath);
-
-      // Prefer getBody() if available; fallback to common fields
-      const pageContent: string =
-        extracted && typeof extracted.getBody === 'function'
-          ? extracted.getBody()
-          : ((extracted?.text as string) ?? '');
+      const extracted = await extractor.extract(filePath);
+      const pageContent = extracted.getBody();
 
       const lines = pageContent.split('\n');
       const lineCount = lines.length;

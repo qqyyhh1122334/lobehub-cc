@@ -48,6 +48,7 @@ describe('TaskService', () => {
   };
 
   const mockTaskModel = {
+    create: vi.fn(),
     findById: vi.fn(),
     findByIds: vi.fn(),
     findAllDescendants: vi.fn(),
@@ -1277,86 +1278,65 @@ describe('TaskService', () => {
     });
   });
 
-  describe('updateStatus / scheduleStartedAt', () => {
-    const baseTask = (overrides: Partial<Record<string, unknown>> = {}) => ({
-      automationMode: 'schedule',
-      context: {},
-      id: 'task-1',
-      identifier: 'T-1',
-      parentTaskId: null,
-      status: 'backlog',
-      ...overrides,
+  describe('intranet cron task restrictions', () => {
+    it('rejects cron task creation before writing a record', async () => {
+      const service = new TaskService(db, userId);
+      await expect(
+        service.createTask({ instruction: 'test', automationMode: 'schedule' }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      expect(mockTaskModel.create).not.toHaveBeenCalled();
     });
 
-    it('stamps scheduleStartedAt when a user starts a schedule (backlog → scheduled)', async () => {
-      const prev = baseTask({ status: 'backlog', automationMode: 'schedule' });
-      const next = baseTask({ status: 'scheduled', automationMode: 'schedule' });
-      mockTaskModel.resolve.mockResolvedValue(prev);
-      mockTaskModel.updateStatus.mockResolvedValue(next);
+    it.each(['backlog', 'running', 'paused'])(
+      'rejects cron start/restart from %s without mutating the task',
+      async (status) => {
+        mockTaskModel.resolve.mockResolvedValue({
+          id: 'task-1',
+          identifier: 'T-1',
+          automationMode: 'schedule',
+          status,
+        });
+        const service = new TaskService(db, userId);
+        await expect(
+          service.updateStatus({ id: 'T-1', status: 'scheduled' as any }),
+        ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+        expect(mockTaskModel.updateStatus).not.toHaveBeenCalled();
+        expect(mockTaskModel.updateContext).not.toHaveBeenCalled();
+      },
+    );
 
-      const service = new TaskService(db, userId);
-      await service.updateStatus({ id: 'T-1', status: 'scheduled' as any });
-
-      expect(mockTaskModel.updateContext).toHaveBeenCalledTimes(1);
-      expect(mockTaskModel.updateContext).toHaveBeenCalledWith('task-1', {
-        scheduler: { scheduleStartedAt: expect.any(String) },
+    it('preserves heartbeat-mode transitions', async () => {
+      mockTaskModel.resolve.mockResolvedValue({
+        id: 'task-1',
+        automationMode: 'heartbeat',
+        status: 'backlog',
       });
-      const stamped = (mockTaskModel.updateContext.mock.calls[0]![1] as any).scheduler
-        .scheduleStartedAt as string;
-      expect(() => new Date(stamped).toISOString()).not.toThrow();
+      mockTaskModel.updateStatus.mockResolvedValue({
+        id: 'task-1',
+        automationMode: 'heartbeat',
+        status: 'scheduled',
+      });
+      const service = new TaskService(db, userId);
+      await expect(
+        service.updateStatus({ id: 'task-1', status: 'scheduled' as any }),
+      ).resolves.toMatchObject({ task: { status: 'scheduled' } });
     });
 
-    it('does NOT stamp on the cron loop natural cycle (running → scheduled)', async () => {
-      // taskLifecycle parks finished ticks at 'scheduled' via taskModel.updateStatus,
-      // bypassing the service layer; the only way it reaches the service is when a
-      // user explicitly transitions. Either way, prev='running' must NOT reset the
-      // counter window — otherwise every successful tick would zero out the cap.
-      const prev = baseTask({ status: 'running', automationMode: 'schedule' });
-      const next = baseTask({ status: 'scheduled', automationMode: 'schedule' });
-      mockTaskModel.resolve.mockResolvedValue(prev);
-      mockTaskModel.updateStatus.mockResolvedValue(next);
-      mockTaskTopicModel.findByTaskId.mockResolvedValue([]);
-
+    it('allows an existing cron record to be paused without deleting it', async () => {
+      mockTaskModel.resolve.mockResolvedValue({
+        id: 'task-1',
+        automationMode: 'schedule',
+        status: 'backlog',
+      });
+      mockTaskModel.updateStatus.mockResolvedValue({
+        id: 'task-1',
+        automationMode: 'schedule',
+        status: 'paused',
+      });
       const service = new TaskService(db, userId);
-      await service.updateStatus({ id: 'T-1', status: 'scheduled' as any });
-
-      expect(mockTaskModel.updateContext).not.toHaveBeenCalled();
-    });
-
-    it('does NOT stamp for heartbeat-mode tasks', async () => {
-      const prev = baseTask({ status: 'backlog', automationMode: 'heartbeat' });
-      const next = baseTask({ status: 'scheduled', automationMode: 'heartbeat' });
-      mockTaskModel.resolve.mockResolvedValue(prev);
-      mockTaskModel.updateStatus.mockResolvedValue(next);
-
-      const service = new TaskService(db, userId);
-      await service.updateStatus({ id: 'T-1', status: 'scheduled' as any });
-
-      expect(mockTaskModel.updateContext).not.toHaveBeenCalled();
-    });
-
-    it('does NOT stamp when the new status is not scheduled', async () => {
-      const prev = baseTask({ status: 'backlog' });
-      const next = baseTask({ status: 'paused' });
-      mockTaskModel.resolve.mockResolvedValue(prev);
-      mockTaskModel.updateStatus.mockResolvedValue(next);
-
-      const service = new TaskService(db, userId);
-      await service.updateStatus({ id: 'T-1', status: 'paused' as any });
-
-      expect(mockTaskModel.updateContext).not.toHaveBeenCalled();
-    });
-
-    it('stamps on user-initiated restart (paused → scheduled)', async () => {
-      const prev = baseTask({ status: 'paused', automationMode: 'schedule' });
-      const next = baseTask({ status: 'scheduled', automationMode: 'schedule' });
-      mockTaskModel.resolve.mockResolvedValue(prev);
-      mockTaskModel.updateStatus.mockResolvedValue(next);
-
-      const service = new TaskService(db, userId);
-      await service.updateStatus({ id: 'T-1', status: 'scheduled' as any });
-
-      expect(mockTaskModel.updateContext).toHaveBeenCalledTimes(1);
+      await expect(
+        service.updateStatus({ id: 'task-1', status: 'paused' as any }),
+      ).resolves.toMatchObject({ task: { status: 'paused' } });
     });
   });
 });

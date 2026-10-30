@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import nerdamer from 'nerdamer-prime/all';
+import { describe, expect, it, vi } from 'vitest';
 
 import { calculatorExecutor } from '../src/executor';
 
@@ -1356,6 +1357,23 @@ describe('Calculator Equation Solver', () => {
       expect(result.success).toBe(false);
       expect(result.error?.type).toBe('SolveError');
       expect(result.content).toContain('distinct solution');
+    });
+
+    it('should report an unsolved system when nerdamer returns null', async () => {
+      const solve = vi.spyOn(nerdamer, 'solveEquations').mockReturnValueOnce(null);
+
+      try {
+        const result = await calculatorExecutor.solve({
+          equation: ['x+y=5', 'x-y=1'],
+          variable: ['x', 'y'],
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error?.type).toBe('SolveError');
+        expect(result.content).toContain('No solution found');
+      } finally {
+        solve.mockRestore();
+      }
     });
 
     it('should handle single equation with extra variables in array', async () => {

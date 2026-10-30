@@ -8,11 +8,12 @@ export type TaskExecutionCallback = (taskId: string, userId: string) => Promise<
 
 /**
  * Local task scheduler using setTimeout
- * For local development without QStash
+ * In-process only; pending timers do not survive a process restart.
  */
 export class LocalTaskScheduler implements TaskSchedulerImpl {
   private executionCallback: TaskExecutionCallback | null = null;
   private pendingSchedules: Map<string, NodeJS.Timeout> = new Map();
+  private sequence = 0;
 
   setExecutionCallback(callback: TaskExecutionCallback): void {
     this.executionCallback = callback;
@@ -20,7 +21,10 @@ export class LocalTaskScheduler implements TaskSchedulerImpl {
 
   async scheduleNextTopic(params: ScheduleNextTopicParams): Promise<string> {
     const { taskId, userId, delay = 0 } = params;
-    const scheduleId = `local-task-${taskId}-${Date.now()}`;
+    if (!Number.isFinite(delay) || delay < 0 || delay * 1000 > 2_147_483_647) {
+      throw new RangeError('Local scheduler delay must be between 0 and 2147483.647 seconds');
+    }
+    const scheduleId = `local-task-${taskId}-${Date.now()}-${this.sequence++}`;
 
     log('Scheduling next topic for task %s (delay: %ds)', taskId, delay);
 

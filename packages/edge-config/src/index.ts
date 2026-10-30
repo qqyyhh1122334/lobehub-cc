@@ -1,57 +1,35 @@
-import type { EdgeConfigClient } from '@vercel/edge-config';
-import { createClient } from '@vercel/edge-config';
-import createDebug from 'debug';
-
-import { appEnv } from '@/envs/app';
-
 import type { EdgeConfigData, EdgeConfigKeys } from './types';
 
-const debug = createDebug('lobe-server:edge-config');
-
+/** Local JSON configuration supplied by the operator; no external configuration service. */
 export class EdgeConfig {
-  get client(): EdgeConfigClient {
-    if (!appEnv.VERCEL_EDGE_CONFIG) {
-      throw new Error('VERCEL_EDGE_CONFIG is not set');
-    }
-    return createClient(appEnv.VERCEL_EDGE_CONFIG);
-  }
-
-  /**
-   * Check if Edge Config is enabled
-   */
   static isEnabled() {
-    const isEnabled = !!appEnv.VERCEL_EDGE_CONFIG;
-    debug('VERCEL_EDGE_CONFIG env var: %s', appEnv.VERCEL_EDGE_CONFIG ? 'SET' : 'NOT SET');
-    debug('EdgeConfig enabled: %s', isEnabled);
-    return isEnabled;
+    return !!process.env.INTRANET_EDGE_CONFIG_JSON;
   }
 
-  async getValue<K extends EdgeConfigKeys>(key: K) {
-    return this.client.get<EdgeConfigData[K]>(key);
+  private read(): EdgeConfigData {
+    const raw = process.env.INTRANET_EDGE_CONFIG_JSON;
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('INTRANET_EDGE_CONFIG_JSON must contain a JSON object');
+    }
+    return parsed as EdgeConfigData;
   }
 
-  async getValues<const K extends EdgeConfigKeys>(keys: K[]) {
-    return this.client.getAll<Pick<EdgeConfigData, K>>(keys);
+  async getValue<K extends EdgeConfigKeys>(key: K): Promise<EdgeConfigData[K]> {
+    return this.read()[key];
   }
-
+  async getValues<const K extends EdgeConfigKeys>(keys: K[]): Promise<Pick<EdgeConfigData, K>> {
+    const data = this.read();
+    return Object.fromEntries(keys.map((key) => [key, data[key]])) as Pick<EdgeConfigData, K>;
+  }
   getAgentRestrictions = async () => {
     const { assistant_blacklist: blacklist, assistant_whitelist: whitelist } = await this.getValues(
       ['assistant_blacklist', 'assistant_whitelist'],
     );
     return { blacklist, whitelist };
   };
-
-  getFeatureFlags = async () => {
-    const featureFlags = await this.getValue('feature_flags');
-    debug('Feature flags retrieved: %O', featureFlags);
-    return featureFlags;
-  };
-
-  getBillboards = async () => {
-    const billboards = await this.getValue('billboards');
-    debug('Billboards retrieved: %O', billboards);
-    return billboards;
-  };
+  getFeatureFlags = async () => this.getValue('feature_flags');
+  getBillboards = async () => this.getValue('billboards');
 }
-
 export * from './types';

@@ -2,16 +2,13 @@
 
 import { VoiceList } from '@lobehub/tts';
 import { type FormGroupItemType } from '@lobehub/ui';
-import { Form, Select } from '@lobehub/ui';
-import { Switch } from 'antd';
+import { Form, Select, Text } from '@lobehub/ui';
 import isEqual from 'fast-deep-equal';
 import { Mic } from 'lucide-react';
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { FORM_STYLE } from '@/const/layoutTokens';
-import { useGlobalStore } from '@/store/global';
-import { globalGeneralSelectors } from '@/store/global/selectors';
 
 import { selectors, useStore } from '../store';
 import { ttsOptions } from './options';
@@ -22,36 +19,18 @@ const { openaiVoiceOptions, localeOptions } = VoiceList;
 
 const AgentTTS = memo(() => {
   const { t } = useTranslation('setting');
+  const { t: commonT } = useTranslation('common');
   const [form] = Form.useForm();
-  const voiceList = useGlobalStore((s) => {
-    const locale = globalGeneralSelectors.currentLanguage(s);
-    return (all?: boolean) => new VoiceList(all ? undefined : locale);
-  });
   const config = useStore(selectors.currentTtsConfig, isEqual);
   const updateConfig = useStore((s) => s.setAgentConfig);
-
-  const { edgeVoiceOptions, microsoftVoiceOptions } = useMemo(
-    () => voiceList(config.showAllLocaleVoice),
-    [config.showAllLocaleVoice],
-  );
 
   const tts: FormGroupItemType = {
     children: [
       {
         children: <Select options={ttsOptions} />,
-        desc: t('settingTTS.ttsService.desc'),
+        desc: commonT('intranet.speechService'),
         label: t('settingTTS.ttsService.title'),
         name: [TTS_SETTING_KEY, 'ttsService'],
-      },
-      {
-        children: <Switch />,
-        desc: t('settingTTS.showAllLocaleVoice.desc'),
-        hidden: config.ttsService === 'openai',
-        label: t('settingTTS.showAllLocaleVoice.title'),
-        layout: 'horizontal',
-        minWidth: undefined,
-        name: [TTS_SETTING_KEY, 'showAllLocaleVoice'],
-        valuePropName: 'checked',
       },
       {
         children: <SelectWithTTSPreview options={openaiVoiceOptions} server={'openai'} />,
@@ -61,7 +40,7 @@ const AgentTTS = memo(() => {
         name: [TTS_SETTING_KEY, 'voice', 'openai'],
       },
       {
-        children: <SelectWithTTSPreview options={edgeVoiceOptions} server={'edge'} />,
+        children: <Text type="secondary">{commonT('intranetUnavailable')}</Text>,
         desc: t('settingTTS.voice.desc'),
         divider: false,
         hidden: config.ttsService !== 'edge',
@@ -69,7 +48,7 @@ const AgentTTS = memo(() => {
         name: [TTS_SETTING_KEY, 'voice', 'edge'],
       },
       {
-        children: <SelectWithTTSPreview options={microsoftVoiceOptions} server={'microsoft'} />,
+        children: <Text type="secondary">{commonT('intranetUnavailable')}</Text>,
         desc: t('settingTTS.voice.desc'),
         divider: false,
         hidden: config.ttsService !== 'microsoft',

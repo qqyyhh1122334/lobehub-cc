@@ -68,6 +68,13 @@ const agentEvalProcedure = authedProcedure.use(serverDatabase).use(async (opts) 
   });
 });
 
+const cloudExecutionProcedure = agentEvalProcedure.use(async () => {
+  throw new TRPCError({
+    code: 'FORBIDDEN',
+    message: 'INTRANET_FEATURE_DISABLED: cloud evaluation workflows',
+  });
+});
+
 export const agentEvalRouter = router({
   // ============================================
   // Benchmark Operations
@@ -707,7 +714,7 @@ export const agentEvalRouter = router({
    * Start executing a run
    * Transitions: idle/failed → pending → running
    */
-  startRun: agentEvalProcedure
+  startRun: cloudExecutionProcedure
     .input(
       z.object({
         id: z.string(),
@@ -764,7 +771,7 @@ export const agentEvalRouter = router({
       return { success: true };
     }),
 
-  retryRunErrors: agentEvalProcedure
+  retryRunErrors: cloudExecutionProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const run = await ctx.runModel.findById(input.id);
@@ -788,7 +795,7 @@ export const agentEvalRouter = router({
       return { retryCount, runId: input.id, success: true };
     }),
 
-  retryRunCase: agentEvalProcedure
+  retryRunCase: cloudExecutionProcedure
     .input(z.object({ runId: z.string(), testCaseId: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const run = await ctx.runModel.findById(input.runId);
@@ -812,7 +819,7 @@ export const agentEvalRouter = router({
       return { runId: input.runId, success: true, testCaseId: input.testCaseId };
     }),
 
-  resumeRunCase: agentEvalProcedure
+  resumeRunCase: cloudExecutionProcedure
     .input(z.object({ runId: z.string(), testCaseId: z.string(), threadId: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       log(
@@ -830,7 +837,7 @@ export const agentEvalRouter = router({
       return result;
     }),
 
-  batchResumeRunCases: agentEvalProcedure
+  batchResumeRunCases: cloudExecutionProcedure
     .input(
       z.object({
         runId: z.string(),

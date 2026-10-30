@@ -50,8 +50,8 @@ import { StreamingResponse } from '../../utils/response';
 import type { LobeRuntimeAI } from '../BaseAI';
 import { convertOpenAIMessages, convertOpenAIResponseInputs } from '../contextBuilders/openai';
 import { resolveModelSamplingParameters } from '../parameterResolver';
-import type { OpenAIStreamOptions } from '../streams';
-import { OpenAIResponsesStream, OpenAIStream } from '../streams';
+import type { OpenAIStreamOptions } from '../streams/openai';
+import { OpenAIResponsesStream, OpenAIStream } from '../streams/openai';
 import type { ChatPayloadForTransformStream } from '../streams/protocol';
 import { convertOpenAIResponseUsage, convertOpenAIUsage } from '../usageConverters/openai';
 import { createOpenAICompatibleImage } from './createImage';
@@ -85,8 +85,7 @@ type ChatCompletionCreateParamsWithPromptCacheKey = Omit<
   Pick<GenerateObjectPayload, 'reasoning_effort'>;
 type GenerateObjectReasoningParams = Pick<GenerateObjectPayload, 'reasoning_effort' | 'thinking'>;
 type ResponseCreateParamsWithPromptCacheKey = (
-  | OpenAI.Responses.ResponseCreateParamsStreaming
-  | OpenAI.Responses.ResponseCreateParams
+  OpenAI.Responses.ResponseCreateParamsStreaming | OpenAI.Responses.ResponseCreateParams
 ) &
   OpenAIExtraParams;
 export type CreateImageOptions = Omit<ClientOptions, 'apiKey'> & {

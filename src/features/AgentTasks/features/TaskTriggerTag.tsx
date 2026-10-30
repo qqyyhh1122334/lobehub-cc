@@ -4,11 +4,7 @@ import { ClockIcon } from 'lucide-react';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import {
-  formatIntervalLabel,
-  formatScheduleDescription,
-  formatTimezoneName,
-} from '@/features/AgentTasks/AgentTaskDetail/scheduler/helpers';
+import { formatIntervalLabel } from '@/features/AgentTasks/AgentTaskDetail/scheduler/helpers';
 
 interface TaskTriggerTagProps {
   automationMode?: 'heartbeat' | 'schedule' | null;
@@ -24,6 +20,7 @@ const PILL_STYLE = { borderRadius: 24, minWidth: 0 };
 const TaskTriggerTag = memo<TaskTriggerTagProps>(
   ({ automationMode, heartbeatInterval, mode = 'tag', schedulePattern, scheduleTimezone }) => {
     const { t, i18n } = useTranslation('chat');
+    const { t: commonT } = useTranslation('common');
     const data = useMemo<
       | {
           primary: string;
@@ -34,16 +31,9 @@ const TaskTriggerTag = memo<TaskTriggerTagProps>(
     >(() => {
       // automationMode is the source of truth — DB may carry stale fields from
       // a previous mode (e.g. a heartbeat task that was once on a schedule).
-      if (automationMode === 'schedule' && schedulePattern) {
-        const primary = formatScheduleDescription(schedulePattern, t);
-        const tzName = scheduleTimezone
-          ? formatTimezoneName(scheduleTimezone, i18n.language)
-          : undefined;
-        return {
-          primary,
-          secondary: tzName,
-          tooltip: tzName ? `${primary} · ${tzName}` : primary,
-        };
+      if (automationMode === 'schedule') {
+        const unavailable = commonT('intranetUnavailable');
+        return { primary: unavailable, tooltip: unavailable };
       }
 
       if (automationMode === 'heartbeat' && heartbeatInterval && heartbeatInterval > 0) {
@@ -57,7 +47,15 @@ const TaskTriggerTag = memo<TaskTriggerTagProps>(
       }
 
       return undefined;
-    }, [automationMode, heartbeatInterval, schedulePattern, scheduleTimezone, t, i18n.language]);
+    }, [
+      automationMode,
+      heartbeatInterval,
+      schedulePattern,
+      scheduleTimezone,
+      t,
+      commonT,
+      i18n.language,
+    ]);
 
     if (mode === 'inline') {
       // Single-line row regardless of mode/content length — long primaries

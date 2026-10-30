@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const getServerDBConfig = () => {
   return createEnv({
     runtimeEnv: {
-      DATABASE_DRIVER: process.env.DATABASE_DRIVER || 'neon',
+      DATABASE_DRIVER: process.env.DATABASE_DRIVER || 'node',
       DATABASE_TEST_URL: process.env.DATABASE_TEST_URL,
       DATABASE_URL: process.env.DATABASE_URL,
 
@@ -13,7 +13,7 @@ export const getServerDBConfig = () => {
       REMOVE_GLOBAL_FILE: process.env.DISABLE_REMOVE_GLOBAL_FILE !== '0',
     },
     server: {
-      DATABASE_DRIVER: z.enum(['neon', 'node']),
+      DATABASE_DRIVER: z.literal('node'),
       DATABASE_TEST_URL: z.string().optional(),
       DATABASE_URL: z.string().optional(),
 

@@ -1,8 +1,5 @@
-import { neonConfig, Pool as NeonPool } from '@neondatabase/serverless';
-import { drizzle as neonDrizzle } from 'drizzle-orm/neon-serverless';
 import { drizzle as nodeDrizzle } from 'drizzle-orm/node-postgres';
 import { Pool as NodePool } from 'pg';
-import ws from 'ws';
 
 import { serverDBEnv } from '@/config/db';
 
@@ -28,36 +25,16 @@ If you don't have it, please run \`openssl rand -base64 32\` to create one.
     throw new Error(`You are try to use database, but "DATABASE_URL" is not set correctly`);
   }
 
-  if (serverDBEnv.DATABASE_DRIVER === 'node') {
-    const client = new NodePool({ connectionString });
-    // pg.Pool emits 'error' on idle clients when the backend connection drops.
-    // Without a listener Node escalates it to uncaughtException and exits the process.
-    // See: https://node-postgres.com/apis/pool#error
-    client.on('error', (err) => {
-      console.error('[NodePool] idle client error (swallowed to prevent process crash):', {
-        code: (err as NodeJS.ErrnoException).code,
-        message: err.message,
-        stack: err.stack,
-      });
-    });
-    return nodeDrizzle(client, { schema });
-  }
-
-  if (process.env.MIGRATION_DB === '1') {
-    // https://github.com/neondatabase/serverless/blob/main/CONFIG.md#websocketconstructor-typeof-websocket--undefined
-    neonConfig.webSocketConstructor = ws;
-  }
-
-  const client = new NeonPool({ connectionString });
-  // NeonPool runs over WebSocket; transient drops surface as 'error' on the pool.
-  // Without a listener Node escalates it to uncaughtException — on Vercel this killed
-  // the entire Lambda 1800+ times in 5 minutes (see ).
-  client.on('error', (err: Error) => {
-    console.error('[NeonPool] idle client error (swallowed to prevent process crash):', {
+  const client = new NodePool({ connectionString });
+  // pg.Pool emits 'error' on idle clients when the backend connection drops.
+  // Without a listener Node escalates it to uncaughtException and exits the process.
+  // See: https://node-postgres.com/apis/pool#error
+  client.on('error', (err) => {
+    console.error('[NodePool] idle client error (swallowed to prevent process crash):', {
       code: (err as NodeJS.ErrnoException).code,
       message: err.message,
       stack: err.stack,
     });
   });
-  return neonDrizzle(client, { schema });
+  return nodeDrizzle(client, { schema });
 };

@@ -10,8 +10,7 @@ const log = debug('lobe-server:agent:exec');
  * Start a new agent operation. Body shape:
  * `{ userId, agentId | slug, prompt, appContext?, autoStart?, existingMessageIds? }`.
  *
- * Auth: handled by `qstashOrApiKeyAuth` on the route — QStash signature OR
- * `AGENT_EXEC_API_KEY` Bearer token. Either passes.
+ * Auth: the route requires the operator's `AGENT_EXEC_API_KEY` Bearer token.
  */
 export async function execAgent(c: Context): Promise<Response> {
   const startTime = Date.now();

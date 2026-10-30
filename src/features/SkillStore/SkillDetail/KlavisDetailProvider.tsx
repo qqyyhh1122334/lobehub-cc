@@ -1,7 +1,6 @@
 'use client';
 
 import { getKlavisServerByServerIdentifier } from '@lobechat/const';
-import { type Klavis } from 'klavis';
 import { type ReactNode } from 'react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +15,7 @@ import { DetailContext } from './DetailContext';
 interface KlavisDetailProviderProps {
   children: ReactNode;
   identifier: string;
-  serverName: Klavis.McpServerName;
+  serverName: string;
 }
 
 export const KlavisDetailProvider = ({

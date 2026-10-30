@@ -605,6 +605,29 @@ describe('WechatAdapter', () => {
       expect(item.file_item?.len).toBe(String(bytes.length));
     });
 
+    it.each([
+      ['Buffer', Buffer.from([1, 2, 3, 4])],
+      ['ArrayBuffer', new Uint8Array([1, 2, 3, 4]).buffer],
+    ] as const)('normalizes lazy %s attachment bytes before upload', async (_, data) => {
+      await adapter.postMessage(threadId, {
+        attachments: [
+          {
+            fetchData: async () => data,
+            mimeType: 'image/png',
+            name: 'lazy.png',
+            type: 'image',
+            url: '',
+          },
+        ],
+        raw: '',
+      });
+
+      expect(uploadSpy).toHaveBeenCalledTimes(1);
+      const uploadedBytes = uploadSpy.mock.calls[0][2];
+      expect(Buffer.isBuffer(uploadedBytes)).toBe(true);
+      expect(uploadedBytes).toEqual(Buffer.from([1, 2, 3, 4]));
+    });
+
     it('falls back to attachment.url when data is absent', async () => {
       const remoteBytes = Buffer.from([1, 2, 3, 4, 5]);
       vi.stubGlobal(

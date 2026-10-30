@@ -1,37 +1,17 @@
 import { createEnv } from '@t3-oss/env-core';
 import { z } from 'zod';
 
-const isInVercel = process.env.VERCEL === '1';
-
-// Vercel URL fallback order (by stability):
-// 1. VERCEL_PROJECT_PRODUCTION_URL - project level, most stable
-// 2. VERCEL_URL - deployment level, changes every deployment
-// 3. VERCEL_BRANCH_URL - branch level, stable across deployments on same branch
-const getVercelUrl = () => {
-  if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  return `https://${process.env.VERCEL_BRANCH_URL}`;
-};
-
-const APP_URL = process.env.APP_URL
-  ? process.env.APP_URL
-  : isInVercel
-    ? getVercelUrl()
-    : process.env.NODE_ENV === 'development'
-      ? `http://localhost:${process.env.PORT || 3010}`
-      : `http://localhost:${process.env.PORT || 3210}`;
+const APP_URL =
+  process.env.APP_URL ||
+  `http://localhost:${process.env.PORT || (process.env.NODE_ENV === 'development' ? 3010 : 3210)}`;
 
 // INTERNAL_APP_URL is used for server-to-server calls to bypass CDN/proxy
 // Falls back to APP_URL if not set
 const INTERNAL_APP_URL = process.env.INTERNAL_APP_URL || APP_URL;
 
-const ASSISTANT_INDEX_URL = 'https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public';
+const ASSISTANT_INDEX_URL = `${APP_URL}/intranet/catalog/agents`;
 
-const PLUGINS_INDEX_URL = 'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public';
+const PLUGINS_INDEX_URL = `${APP_URL}/intranet/catalog/plugins`;
 
 export const getAppConfig = () => {
   return createEnv({
@@ -50,7 +30,6 @@ export const getAppConfig = () => {
 
       APP_URL: z.string(),
       INTERNAL_APP_URL: z.string().optional(),
-      VERCEL_EDGE_CONFIG: z.string().optional(),
       MIDDLEWARE_REWRITE_THROUGH_LOCAL: z.boolean().optional(),
 
       CDN_USE_GLOBAL: z.boolean().optional(),
@@ -78,9 +57,8 @@ export const getAppConfig = () => {
       AGENT_GATEWAY_SERVICE_TOKEN: z.string().optional(),
       AGENT_GATEWAY_URL: z.string().url().optional(),
       /**
-       * Enable Queue-based Agent Runtime
-       * When true, use QStash for async agent execution (production)
-       * When false, execute agent steps synchronously in current process (development)
+       * Compatibility flag: always false in the intranet edition.
+       * Agent steps run in the current process using the local queue.
        * @default false
        */
       enableQueueAgentRuntime: z.boolean().optional(),
@@ -88,7 +66,7 @@ export const getAppConfig = () => {
     },
     runtimeEnv: {
       // Sentry
-      NEXT_PUBLIC_ENABLE_SENTRY: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+      NEXT_PUBLIC_ENABLE_SENTRY: false,
 
       AGENTS_INDEX_URL: !!process.env.AGENTS_INDEX_URL
         ? process.env.AGENTS_INDEX_URL
@@ -102,8 +80,6 @@ export const getAppConfig = () => {
         : PLUGINS_INDEX_URL,
 
       PLUGIN_SETTINGS: process.env.PLUGIN_SETTINGS,
-
-      VERCEL_EDGE_CONFIG: process.env.VERCEL_EDGE_CONFIG,
 
       APP_URL,
       INTERNAL_APP_URL,
@@ -122,8 +98,8 @@ export const getAppConfig = () => {
 
       AGENT_GATEWAY_SERVICE_TOKEN: process.env.AGENT_GATEWAY_SERVICE_TOKEN,
       AGENT_GATEWAY_URL: process.env.AGENT_GATEWAY_URL,
-      enableQueueAgentRuntime: process.env.AGENT_RUNTIME_MODE === 'queue',
-      TELEMETRY_DISABLED: process.env.TELEMETRY_DISABLED === '1',
+      enableQueueAgentRuntime: false,
+      TELEMETRY_DISABLED: true,
     },
   });
 };
