@@ -139,11 +139,12 @@ DEV_SEARXNG_PORT=18180
 
 ```bash
 cp docker-compose/dev/.env.zh-CN.example docker-compose/dev/.env
+# 仅为新的开发数据库生成密钥；已有数据库复用原 KEY_VAULTS_SECRET。
 openssl rand -base64 32
 openssl rand -base64 32
 ```
 
-将两次生成的值分别填入 `AUTH_SECRET` 和 `KEY_VAULTS_SECRET`，并修改服务器侧 `docker-compose/dev/.env`：
+使用新数据库时，将两次生成的值分别填入 `AUTH_SECRET` 和 `KEY_VAULTS_SECRET`。沿用已有数据库（包括从本地后端切换到此模式）时，`KEY_VAULTS_SECRET` 必须与此前连接该库的后端一致，否则已保存的凭据无法解密。`AUTH_SECRET` 可以独立配置，变更后需要重新登录。修改服务器侧 `docker-compose/dev/.env`：
 
 ```dotenv
 NODE_IMAGE=node:22-bookworm-slim
@@ -151,7 +152,7 @@ APP_URL=https://chat-dev.example.com
 LOBE_PORT=3210
 
 AUTH_SECRET=<独立生成并保存的认证密钥>
-KEY_VAULTS_SECRET=<独立生成并保存的加密密钥>
+KEY_VAULTS_SECRET=<已有数据库的原加密密钥；仅新库生成>
 
 LOBE_DB_NAME=lobechat
 POSTGRES_PASSWORD=<数据库密码>
