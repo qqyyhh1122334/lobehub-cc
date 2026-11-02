@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+**/node_modules
+.next
+dist
+.env
+.env.*
+**/.env
+**/.env.*
+deploy/intranet/certs
+deploy/intranet/model-data
+deploy/intranet/bundle
+deploy/intranet/acceptance-*.json
+**/*.tar
+**/*.log
+e2e/reports

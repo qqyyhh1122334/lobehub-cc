@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
 import { observeCapture } from './capture-process.cjs';
 import { runCommand } from './command.cjs';
 
@@ -60,8 +61,22 @@ try {
     assert.equal(actual.Id, expected.id, `Image ID mismatch: ${service.image}`);
   }
   record('compose-and-immutable-images');
-  docker(['compose', '-f', 'compose.yaml', 'up', '-d', '--pull', 'never', '--wait', '--wait-timeout', '300'],
-    undefined, { stage: 'compose-startup', timeoutMs: 360_000 });
+  docker(
+    [
+      'compose',
+      '-f',
+      'compose.yaml',
+      'up',
+      '-d',
+      '--pull',
+      'never',
+      '--wait',
+      '--wait-timeout',
+      '300',
+    ],
+    undefined,
+    { stage: 'compose-startup', timeoutMs: 360_000 },
+  );
   compose('exec', '-T', 'network-policy', '/bin/sh', '/policy/check.sh');
   const policyNamespace = compose(
     'exec',
@@ -108,7 +123,13 @@ try {
     '(dst host 172.30.90.13 and tcp dst port 11434)',
     '(dst host 172.30.90.53 and dst port 53)',
   ].join(' or ');
-  const filter = `((${sources}) and not (${allowedDestinations})) or ip6`;
+  // REJECT delivers ICMP port-unreachable back to the local socket, and the
+  // bridge answers ARP for the allowed neighbors. Neither leaves the host.
+  // TCP/UDP to any other destination, and every IPv6 packet, still match.
+  const localRejects = sourceIPs
+    .map((ip) => `(icmp and src host ${ip} and dst host ${ip})`)
+    .join(' or ');
+  const filter = `((${sources}) and not (${allowedDestinations}) and not arp and not (${localRejects})) or ip6`;
   capture = spawn(
     'docker',
     [
@@ -188,10 +209,14 @@ try {
   // Docker config contains secrets: never print its captured stdout or stderr.
   output.error =
     error instanceof assert.AssertionError ? error.message : error.message.split('\n')[0];
-  if (error.code === 'INTRANET_COMMAND_TIMEOUT') output.commandFailure = {
-    stage: error.stage, timeoutMs: error.timeoutMs, timedOut: true,
-    containerTermination: 'unconfirmed', cleanup: 'unconfirmed',
-  };
+  if (error.code === 'INTRANET_COMMAND_TIMEOUT')
+    output.commandFailure = {
+      stage: error.stage,
+      timeoutMs: error.timeoutMs,
+      timedOut: true,
+      containerTermination: 'unconfirmed',
+      cleanup: 'unconfirmed',
+    };
   console.error(`Acceptance FAILED: ${output.error}`);
   process.exitCode = 1;
 } finally {

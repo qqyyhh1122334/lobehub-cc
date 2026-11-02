@@ -29,6 +29,20 @@ const VALIDATION_MODULES = [
   '@aws-sdk/s3-request-presigner',
 ];
 
+// Overlay-backed builders (Docker BuildKit) return EXDEV when renaming a
+// directory created in an earlier layer. Copying preserves the move, including
+// relative links, and still leaves the tree outside the builder node_modules.
+function movePath(source, destination) {
+  try {
+    renameSync(source, destination);
+  } catch (error) {
+    if (error.code !== 'EXDEV') throw error;
+    rmSync(destination, { recursive: true, force: true });
+    cpSync(source, destination, { recursive: true, verbatimSymlinks: true });
+    rmSync(source, { recursive: true, force: true });
+  }
+}
+
 function entryExists(file) {
   try {
     lstatSync(file);
@@ -40,7 +54,7 @@ function entryExists(file) {
 }
 
 function assertPackageName(name) {
-  if (!/^(?:@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(name) || name === '.' || name === '..')
+  if (!/^(?:@[\w.-]+\/)?[\w.-]+$/.test(name) || name === '.' || name === '..')
     throw new Error(`Invalid package name: ${name}`);
 }
 
@@ -117,7 +131,7 @@ function copyDependencyGraph(root, store, packageNames = ROOT_PACKAGES) {
 function verifyStandalone(destination, modules = VALIDATION_MODULES, { stdio = 'inherit' } = {}) {
   // Remove access to builder node_modules; also reject escaped absolute links.
   const isolated = mkdtempSync(join(tmpdir(), 'lobehub-standalone-'));
-  renameSync(destination, isolated);
+  movePath(destination, isolated);
   try {
     execFileSync(
       process.execPath,
@@ -143,7 +157,7 @@ function verifyStandalone(destination, modules = VALIDATION_MODULES, { stdio = '
       { cwd: isolated, stdio },
     );
   } finally {
-    renameSync(isolated, destination);
+    movePath(isolated, destination);
   }
 }
 
@@ -171,10 +185,10 @@ function prepareRuntime({
   try {
     const graph = copyDependencyGraph(root, stage, packageNames);
     if (entryExists(store)) {
-      renameSync(store, previousStore);
+      movePath(store, previousStore);
       storeMoved = true;
     }
-    renameSync(stage, store);
+    movePath(stage, store);
     installed = true;
     for (const entry of graph.entries) {
       const target = join(nodeModules, entry.name);
@@ -182,7 +196,7 @@ function prepareRuntime({
       const hadOriginal = entryExists(target);
       if (hadOriginal) {
         mkdirSync(dirname(original), { recursive: true });
-        renameSync(target, original);
+        movePath(target, original);
       }
       originals.push({ target, original, hadOriginal });
       mkdirSync(dirname(target), { recursive: true });
@@ -212,11 +226,11 @@ function prepareRuntime({
       if (installed) {
         for (const original of originals.reverse()) {
           rmSync(original.target, { recursive: true, force: true });
-          if (original.hadOriginal) renameSync(original.original, original.target);
+          if (original.hadOriginal) movePath(original.original, original.target);
         }
         rmSync(store, { recursive: true, force: true });
       }
-      if (storeMoved) renameSync(previousStore, store);
+      if (storeMoved) movePath(previousStore, store);
     }
     rmSync(stage, { recursive: true, force: true });
     rmSync(backup, { recursive: true, force: true });
