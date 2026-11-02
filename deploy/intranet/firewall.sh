@@ -10,8 +10,12 @@ iptables -F FORWARD
 iptables -F OUTPUT
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A INPUT -i lo -p tcp -m multiport --dports 3210,8443 -j ACCEPT
-iptables -A OUTPUT -o lo -d 127.0.0.1 -p tcp -m multiport --dports 3210,8443 -j ACCEPT
+# Two single-port rules, not -m multiport: some kernels ship without xt_multiport
+# and nftables then refuses the combined match. The allow-list is unchanged.
+iptables -A INPUT -i lo -p tcp --dport 3210 -j ACCEPT
+iptables -A INPUT -i lo -p tcp --dport 8443 -j ACCEPT
+iptables -A OUTPUT -o lo -d 127.0.0.1 -p tcp --dport 3210 -j ACCEPT
+iptables -A OUTPUT -o lo -d 127.0.0.1 -p tcp --dport 8443 -j ACCEPT
 iptables -A INPUT -p tcp --dport 8443 -j ACCEPT
 for endpoint in '172.30.90.10 5432' '172.30.90.11 6379' '172.30.90.12 9000' '172.30.90.13 11434'; do
     set -- $endpoint

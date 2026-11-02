@@ -1,0 +1,13 @@
+# Docker Hub no longer publishes minio/minio. Package the static MinIO server
+# shipped in bitnamilegacy/minio so Compose can keep its command, UID 1000,
+# and MINIO_ROOT_USER / MINIO_ROOT_PASSWORD settings.
+# Tag the result as minio/minio:RELEASE.2025-04-22T22-12-26Z (the Compose
+# default). The binary's own version is DEVELOPMENT.2025-05-24T17-08-30Z.
+FROM bitnamilegacy/minio:latest AS binary
+FROM alpine:3.21.3
+COPY --from=binary /opt/bitnami/minio/bin/minio /usr/local/bin/minio
+RUN mkdir -p /data && chown 1000:1000 /data
+USER 1000:1000
+EXPOSE 9000 9001
+ENTRYPOINT ["minio"]
+CMD ["server", "/data", "--console-address", ":9001"]

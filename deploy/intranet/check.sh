@@ -8,13 +8,15 @@ for chain in INPUT OUTPUT FORWARD; do
 done
 # Exact counts plus every expected rule reject injected ACCEPT rules, even
 # when they precede the terminal REJECT. No mutable policy file is consulted.
-test "$(iptables -S INPUT | wc -l | tr -d ' ')" = 4
-test "$(iptables -S OUTPUT | wc -l | tr -d ' ')" = 10
+test "$(iptables -S INPUT | wc -l | tr -d ' ')" = 5
+test "$(iptables -S OUTPUT | wc -l | tr -d ' ')" = 11
 test "$(iptables -S FORWARD | wc -l | tr -d ' ')" = 1
 iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -C OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -C INPUT -i lo -p tcp -m multiport --dports 3210,8443 -j ACCEPT
-iptables -C OUTPUT -o lo -d 127.0.0.1 -p tcp -m multiport --dports 3210,8443 -j ACCEPT
+iptables -C INPUT -i lo -p tcp --dport 3210 -j ACCEPT
+iptables -C INPUT -i lo -p tcp --dport 8443 -j ACCEPT
+iptables -C OUTPUT -o lo -d 127.0.0.1 -p tcp --dport 3210 -j ACCEPT
+iptables -C OUTPUT -o lo -d 127.0.0.1 -p tcp --dport 8443 -j ACCEPT
 iptables -C INPUT -p tcp --dport 8443 -j ACCEPT
 for endpoint in '172.30.90.10 5432' '172.30.90.11 6379' '172.30.90.12 9000' '172.30.90.13 11434'; do
     set -- $endpoint

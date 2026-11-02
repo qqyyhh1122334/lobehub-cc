@@ -7,3 +7,14 @@ npm-debug.log
 .github
 *.md
 .env.example
+.env
+.env.*
+**/.env
+**/.env.*
+deploy/intranet/certs
+deploy/intranet/model-data
+deploy/intranet/bundle
+deploy/intranet/acceptance-*.json
+**/*.tar
+**/*.log
+**/node_modules

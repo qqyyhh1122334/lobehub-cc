@@ -127,6 +127,24 @@ export default eslint(
       'unicorn/prefer-top-level-await': 0,
     },
   },
+  // Intranet deployment scripts are plain Node CJS so they run before the app bundle exists.
+  {
+    files: [
+      'deploy/intranet/**/*.{cjs,mjs}',
+      'scripts/intranet/**/*.{cjs,mjs}',
+      'tests/intranet/**/*.{cjs,mjs}',
+    ],
+    rules: {
+      '@typescript-eslint/no-require-imports': 0,
+      '@typescript-eslint/no-unused-vars': 0,
+      'no-console': 0,
+      'no-empty': 0,
+      'regexp/no-contradiction-with-assertion': 0,
+      'unicorn/import-style': 0,
+      'unicorn/no-process-exit': 0,
+      'unused-imports/no-unused-vars': 0,
+    },
+  },
   // E2E and test files - allow console.log for debugging
   {
     files: ['e2e/**/*', '**/*.test.ts', '**/*.test.tsx'],

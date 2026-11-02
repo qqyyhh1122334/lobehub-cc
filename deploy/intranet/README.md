@@ -8,21 +8,21 @@
 
 **验收状态请看 [DEPLOYMENT-VERIFICATION.md](./DEPLOYMENT-VERIFICATION.md)。当前开发环境没有 Docker CLI/daemon，不能把静态检查当作容器启动、真实数据库迁移或完整业务验收。必须在目标主机执行 `accept.mjs`，全部通过后再交付生产。**
 
-2026-10-30 检查点新增迁移全清单/哈希、SSE 完成事件和命令超时检查，必须重建应用镜像以包含 `migration-check.cjs`、`probe-deadline.cjs`、`sse-check.cjs`，不能用旧镜像绕过失败。普通 Docker 命令最多等待 30 秒，Compose 启动 6 分钟，应用探针外层 12 分钟；探针内部另有 10 分钟硬截止，数据库连接/语句/客户端查询分别限 10/15/20 秒。硬截止可能来不及清理测试账号和对象，报告会明确说明清理未确认，验收判定失败。使用新的专用测试账号，保留失败报告供清理核对。
+2026-10-30 检查点新增迁移全清单 / 哈希、SSE 完成事件和命令超时检查，必须重建应用镜像以包含 `migration-check.cjs`、`probe-deadline.cjs`、`sse-check.cjs`，不能用旧镜像绕过失败。普通 Docker 命令最多等待 30 秒，Compose 启动 6 分钟，应用探针外层 12 分钟；探针内部另有 10 分钟硬截止，数据库连接 / 语句 / 客户端查询分别限 10/15/20 秒。硬截止可能来不及清理测试账号和对象，报告会明确说明清理未确认，验收判定失败。使用新的专用测试账号，保留失败报告供清理核对。
 
 ## 隔离结构
 
-| 组件           | 网络与权限                                                  | 用途                                                                               |
-| -------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| network-policy | 入口网 + `internal: true` 后端网；唯一有 `NET_ADMIN` 的服务 | 在应用启动前配置 IPv4/IPv6 默认 DROP、精确 IP/端口白名单；`NET_RAW` 仅用于验收抓包 |
-| app、nginx     | 共用 network-policy 网络命名空间，非 root，`cap_drop: ALL`  | 所有应用与子进程都受同一内核规则约束；浏览器统一 TLS 同源访问                      |
-| PostgreSQL     | `172.30.90.10:5432`，仅后端内网                             | ParadeDB，必须同时具备 `vector` 与 `pg_search`；基线迁移 0090 使用 `pg_search`     |
-| Redis          | `172.30.90.11:6379`，仅后端内网                             | 缓存及会话；不发布主机端口                                                         |
-| MinIO          | `172.30.90.12:9000`，仅后端内网                             | 私有 `lobehub-files` 桶；浏览器经 nginx 同源签名上传/下载                          |
-| Ollama         | `172.30.90.13:11434`，仅后端内网                            | 默认聊天模型 `qwen3:8b`，1024 维嵌入模型 `bge-m3`                                  |
-| CoreDNS        | `172.30.90.53:53`，仅后端内网                               | 只将本部署 `.internal` 主机名解析到回环；其他域名返回 NXDOMAIN，没有 DNS 转发器    |
+| 组件           | 网络与权限                                                  | 用途                                                                                 |
+| -------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| network-policy | 入口网 + `internal: true` 后端网；唯一有 `NET_ADMIN` 的服务 | 在应用启动前配置 IPv4/IPv6 默认 DROP、精确 IP / 端口白名单；`NET_RAW` 仅用于验收抓包 |
+| app、nginx     | 共用 network-policy 网络命名空间，非 root，`cap_drop: ALL`  | 所有应用与子进程都受同一内核规则约束；浏览器统一 TLS 同源访问                        |
+| PostgreSQL     | `172.30.90.10:5432`，仅后端内网                             | ParadeDB，必须同时具备 `vector` 与 `pg_search`；基线迁移 0090 使用 `pg_search`       |
+| Redis          | `172.30.90.11:6379`，仅后端内网                             | 缓存及会话；不发布主机端口                                                           |
+| MinIO          | `172.30.90.12:9000`，仅后端内网                             | 私有 `lobehub-files` 桶；浏览器经 nginx 同源签名上传 / 下载                          |
+| Ollama         | `172.30.90.13:11434`，仅后端内网                            | 默认聊天模型 `qwen3:8b`，1024 维嵌入模型 `bge-m3`                                    |
+| CoreDNS        | `172.30.90.53:53`，仅后端内网                               | 只将本部署 `.internal` 主机名解析到回环；其他域名返回 NXDOMAIN，没有 DNS 转发器      |
 
-应用额外预加载 `scripts/intranet/network-guard.cjs`，采用精确主机/端口白名单；该层用于提前拒绝及可诊断报错。最终网络边界是内核防火墙和 Docker 内网，覆盖不经 JavaScript fetch 的原生模块和子进程。不要给应用增加 `NET_ADMIN`、host 网络、Docker socket 或额外网络。
+应用额外预加载 `scripts/intranet/network-guard.cjs`，采用精确主机 / 端口白名单；该层用于提前拒绝及可诊断报错。最终网络边界是内核防火墙和 Docker 内网，覆盖不经 JavaScript fetch 的原生模块和子进程。不要给应用增加 `NET_ADMIN`、host 网络、Docker socket 或额外网络。
 
 浏览器由强制 CSP 和前端防护约束。服务端 Docker 网络不能管理用户浏览器的其他标签页、扩展、用户另行导航或浏览器自身更新。需要对整台终端保证无公网访问时，终端所在网络也必须实施出口封禁。
 
@@ -64,8 +64,16 @@ Docker 编译完成后，`prepare-runtime.cjs` 从已安装且锁定的依赖中
 
 ```bash
 docker compose -f compose.yaml config --images
-docker compose -f compose.yaml pull --policy always postgres redis storage model dns nginx
+docker compose -f compose.yaml pull --policy always postgres redis model dns nginx
 ```
+
+Docker Hub 已不再提供 `minio/minio`（仓库不存在）。对象存储改由本地镜像提供，标签仍使用 Compose 默认名，因此不用改服务命令：
+
+```bash
+docker build -f Dockerfile.storage -t minio/minio:RELEASE.2025-04-22T22-12-26Z .
+```
+
+该镜像打包 `bitnamilegacy/minio` 里的静态 MinIO 二进制（自身版本 `DEVELOPMENT.2025-05-24T17-08-30Z`），不是已下架的 `RELEASE.2025-04-22` 原镜像。入口仍是 `minio server /data`，账号仍是 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`，监听 9000。
 
 如果组织有审批过的镜像，在 `.env` 中设置 `POSTGRES_IMAGE`、`REDIS_IMAGE`、`STORAGE_IMAGE`、`MODEL_IMAGE`、`DNS_IMAGE`、`NGINX_IMAGE`。PostgreSQL 默认沿用上游 ParadeDB 的 pg17 标签，导出清单会记录实际不可变 image ID 与 digest；离线验收要求 ID 完全一致，不能只比较标签。建议生产审批时把上游标签换成已验证 digest。
 
@@ -121,6 +129,10 @@ node import-offline.mjs ./bundle
 docker compose -f compose.yaml up -d --pull never --wait --wait-timeout 300
 ```
 
+准备机编译应用镜像需要 BuildKit（`DOCKER_BUILDKIT=1` 或 `docker buildx`）。`RUN --network=none` 和可选的代理 CA secret 不能在旧版 builder 上执行。
+
+若宿主机同时残留 iptables-legacy，且 `iptables-legacy -S FORWARD` 的策略是 DROP、又不放行本部署的网桥，容器之间会超时，应用会停在存储或数据库连接上。Docker 29 默认把规则写到 nftables 时，把这条过期策略改为 ACCEPT：`iptables-legacy -P FORWARD ACCEPT`。不要因此给应用加 `NET_ADMIN`。
+
 默认只绑定主机 `127.0.0.1:8443`。要向内网用户开放，在 `.env` 将 `BIND_IP` 改为本机指定的内网 IPv4 地址，同时将客户端 DNS 的 `lobehub.internal` 指向该地址。不要把它发布到公网。使用 `https://lobehub.internal:8443`；本配置固定端口 8443，改端口需同步签名、证书入口和网络策略。
 
 应用本身固定监听共享网络命名空间内的 `127.0.0.1:3210`，由同命名空间的 nginx 代理。对内网开放时只调整前述 `BIND_IP`，不要把 app 的 `HOSTNAME` 改成 `0.0.0.0`。Node 监听过程也会调用地址解析，出站防护会拒绝未经允许的通配地址；本配置没有为解决监听而放宽 `0.0.0.0` 的网络权限。源码命令 `pnpm start` 与 `pnpm dev:next` 同样明确绑定回环地址，分别使用 3210/3010；运行前仍需在环境中提供对应回环端点及所需内部服务的精确白名单。
@@ -156,7 +168,7 @@ unset INTRANET_TEST_PASSWORD
 - Compose 结构与本地 image ID；所有服务禁止自动拉取镜像。
 - 容器健康、实际 app/nginx/firewall 网络命名空间一致、完整预期防火墙规则。
 - **移除 Node preload 后**用原生 TCP/UDP/DNS 访问测试公网 IP、云元数据 IP，确认拒绝计数增加。
-- 在真实注册、密码登录、会话验证、应用聊天 SSE、Ollama 推理、1024 维嵌入、数据库扩展/迁移、同源签名上传/下载期间保持抓包；发现非白名单出站包即失败。
+- 在真实注册、密码登录、会话验证、应用聊天 SSE、Ollama 推理、1024 维嵌入、数据库扩展 / 迁移、同源签名上传 / 下载期间保持抓包；发现非白名单出站包即失败。
 - 网页 CSP、上传内容 sandbox CSP、强制下载响应头。
 
 验收生成 `acceptance-*.json`。这仍不能替代目标环境的浏览器交互回归：还应实际完成中文登录、流式聊天、图片上传、PDF 上传与知识库检索、刷新重登、重启后持久化检查。修改模型、证书、端点、镜像、网络或权限后必须重新验收。
@@ -165,6 +177,6 @@ unset INTRANET_TEST_PASSWORD
 
 - 不要单独重建 network-policy 容器后让 app/nginx 继续使用旧命名空间。升级或修改策略时整组 `docker compose down` 再 `up`，**不要加 `-v`**；持久卷保留。普通 `restart` 不会清空现有防火墙，但策略更新仍按整组重建处理。
 - app 不允许代理环境变量；Compose 已显式置空 HTTP/HTTPS/ALL_PROXY 的大小写变体。使用内部转发代理也会扩大出口能力，不能直接加入白名单。
-- 如需额外内网模型、SMTP、MCP 或 S3 服务，需同时修改配置、精确端点白名单、内核规则和验收。不要用“允许所有私网”代替精确服务名单。
-- 原本依赖公网的 Klavis、云市场、联网搜索、云身份、遥测和相关功能已禁用/移除；详见 [SAAS-VERIFICATION.md](./SAAS-VERIFICATION.md)。本地内存任务队列不具备 QStash 的跨进程持久化和重启恢复保证；不能把已接受的后台任务视为持久任务。
+- 如需额外内网模型、SMTP、MCP 或 S3 服务，需同时修改配置、精确端点白名单、内核规则和验收。不要用 “允许所有私网” 代替精确服务名单。
+- 原本依赖公网的 Klavis、云市场、联网搜索、云身份、遥测和相关功能已禁用 / 移除；详见 [SAAS-VERIFICATION.md](./SAAS-VERIFICATION.md)。本地内存任务队列不具备 QStash 的跨进程持久化和重启恢复保证；不能把已接受的后台任务视为持久任务。
 - 本配置面向 Linux 容器服务端网页版本，不包含 Electron 桌面分发和公网机器人网关。后端网络限制无法约束部署管理员直接修改宿主机、Docker 权限或容器防火墙。
